@@ -19,12 +19,13 @@ Each phase was followed by: tests → fixes → log check → functional verific
 | 13 | Security audit | See SECURITY.md (npm audit clean, findings table) | CI audit step |
 | 14 | Production deployment | PM2, Nginx, HTTPS, scripts, runbooks | `bash -n` on scripts; `deploy.sh` gates on tests |
 | 15 | Completion pass | Arbitrage P&L accounting with legging protection; RSS/Atom news input and AI news sentiment; promotion gates require backtests with ≥5 trades; testnet status fallback; responsive header; screenshot set | `arbitrage.test.ts`, `news.test.ts`, stage-gate API test, headless-Chromium walkthrough (`docs/screenshots/`) |
+| 16 | Accounts, sign-in & trader terminal | Email verification; email-code 2FA; Continue with Google/GitHub; trader sign-up and separate admin portal; personal demo accounts; chart-first trader terminal; light/dark theme; dev-only simulated feed | `authExtended.test.ts`, `demoAccount.test.ts`, websocket routing test, full headless-browser walkthrough (sign-up → email verification → trades → email 2FA → admin console) |
 
 ## Test summary
 
-* Server: 18 suites, 188 tests, all passing, run against a real `mongod`
+* Server: 20 suites, 222 tests, all passing, run against a real `mongod`
   (`MONGODB_TEST_URI` or mongodb-memory-server).
-* Client: 5 component and utility tests, typecheck, production build.
+* Client: 8 component and utility tests, typecheck, production build.
 
 ## Known limitations (be aware before trading)
 
@@ -43,6 +44,9 @@ Each phase was followed by: tests → fixes → log check → functional verific
   net P&L (after fees) goes into the portfolio. A partial or one-sided fill trips `UNHEDGED_EXPOSURE` (manual reset),
   disables the strategy and sends an alert. Legging risk can't be removed entirely, so keep it in PAPER until you've tested it on testnet.
 * Jobs use in-process node-cron in a single PM2 instance. BullMQ + Redis wasn't needed at this scale.
-* A TOTP code can be replayed within its ±30 s window (an accepted risk; see SECURITY.md).
+* An authenticator (TOTP) code can be replayed within its ±30 s window (an accepted risk; email codes are single-use; see SECURITY.md).
+* Google/GitHub sign-in was tested with mocked provider endpoints and checked up to the provider redirect.
+  Register real OAuth apps (callback URLs in `.env.example`) and test the full round trip before relying on it.
+* Personal accounts are demo (PAPER) only. Live trading stays a single, admin-controlled system account.
 * Synthetic random-walk backtests lose money after costs, which is the expected behaviour for strategies with no edge.
   None of the bundled strategies has been shown to be profitable on real data. Treat them as starting points for research.

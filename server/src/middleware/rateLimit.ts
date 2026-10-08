@@ -4,6 +4,9 @@ import { env } from '../config/env';
 const isTest = env.NODE_ENV === 'test';
 
 export const apiLimiter = rateLimit({ windowMs: 60_000, limit: isTest ? 10_000 : 300, standardHeaders: 'draft-7', legacyHeaders: false });
-export const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: isTest ? 10_000 : 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many authentication attempts' } } });
+/** Credential endpoints: only FAILED attempts count, so normal use never hits the limit but guessing does. */
+export const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: isTest ? 10_000 : 20, skipSuccessfulRequests: true, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many failed attempts. Try again in a few minutes.' } } });
+/** Session plumbing (token refresh, OAuth redirects): generous, every request counts. */
+export const sessionLimiter = rateLimit({ windowMs: 15 * 60_000, limit: isTest ? 10_000 : 300, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: { code: 'RATE_LIMITED', message: 'Too many requests' } } });
 export const protectedActionLimiter = rateLimit({ windowMs: 60_000, limit: isTest ? 1_000 : 10, standardHeaders: 'draft-7', legacyHeaders: false });
 export const demoOrderLimiter = rateLimit({ windowMs: 60_000, limit: isTest ? 1_000 : 30, standardHeaders: 'draft-7', legacyHeaders: false, keyGenerator: (req) => req.user?.id ?? req.ip ?? 'anon' });

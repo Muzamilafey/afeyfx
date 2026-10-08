@@ -1,0 +1,40 @@
+import { SecuritySettings } from '../../components/SecuritySettings';
+import { useAuth } from '../../hooks/useAuth';
+import { useTrader } from '../../hooks/useTrader';
+import { useTheme, type ThemePref } from '../../hooks/useTheme';
+import { Card, Stat } from '../../components/ui';
+import { fmtNum, fmtPct, pnlClass } from '../../utils/format';
+
+export function AccountPage() {
+  const { user } = useAuth();
+  const { account } = useTrader();
+  const { pref, setPref } = useTheme();
+  return (
+    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+      <div className="flex items-center gap-4">
+        {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-14 w-14 rounded-full" /> : <div className="flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-xl font-bold text-white">{user?.name?.[0]?.toUpperCase()}</div>}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-50">{user?.name}</h1>
+          <div className="text-sm text-slate-400">{user?.email} · <span className="uppercase">{user?.role}</span></div>
+        </div>
+      </div>
+      <Card title="Demo account">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Stat label="Equity" value={`$${fmtNum(account?.equity)}`} />
+          <Stat label="Available" value={`$${fmtNum(account?.available)}`} />
+          <Stat label="Total P&L" value={fmtNum(account?.totalPnl)} valueClass={pnlClass(account?.totalPnl)} />
+          <Stat label="Drawdown" value={fmtPct(account?.drawdown)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">Demo accounts use virtual funds. There are no deposits or withdrawals.</p>
+      </Card>
+      <Card title="Appearance">
+        <div className="flex gap-2">
+          {(['light', 'dark', 'system'] as ThemePref[]).map((p) => (
+            <button key={p} onClick={() => setPref(p)} className={`rounded-lg px-4 py-2 text-sm capitalize ${pref === p ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>{p}</button>
+          ))}
+        </div>
+      </Card>
+      <SecuritySettings />
+    </div>
+  );
+}

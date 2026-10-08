@@ -302,8 +302,9 @@ export class OrderExecutionService {
   }
 
   /** Cancel every open order for a mode. Returns counts; errors are collected, not thrown. */
+  /** Cancel every open order of the system book (personal demo accounts are not touched). */
   async cancelAllOpen(mode: 'PAPER' | 'LIVE') {
-    const open = await OrderModel.find({ mode, status: { $in: ['PENDING', 'SUBMITTED', 'OPEN', 'PARTIALLY_FILLED'] } });
+    const open = await OrderModel.find({ mode, user: null, status: { $in: ['PENDING', 'SUBMITTED', 'OPEN', 'PARTIALLY_FILLED'] } });
     const errors: string[] = [];
     let cancelled = 0;
     for (const o of open) {

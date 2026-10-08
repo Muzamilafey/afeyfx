@@ -48,8 +48,12 @@ describe('personal demo accounts', () => {
     expect(pos).toHaveLength(1);
     // Bob cannot close Alice's position
     expect((await request(app).post(`/api/account/positions/${pos[0]._id}/close`).set(bob.auth)).status).toBe(404);
-    // System book untouched
+    // System book untouched, and admin system-book lists exclude personal accounts unless asked
     expect(await PortfolioModel.countDocuments({ owner: null })).toBe(0);
+    const admin = await makeUser(app, 'admin@x.io', 'admin');
+    expect((await request(app).get('/api/positions?mode=PAPER').set(admin.auth)).body.positions).toHaveLength(0);
+    expect((await request(app).get('/api/orders?mode=PAPER').set(admin.auth)).body.orders).toHaveLength(0);
+    expect((await request(app).get('/api/positions?mode=PAPER&owner=all').set(admin.auth)).body.positions).toHaveLength(1);
     setBook(104.9, 105.1);
     const c = await request(app).post(`/api/account/positions/${pos[0]._id}/close`).set(alice.auth);
     expect(c.status).toBe(200);

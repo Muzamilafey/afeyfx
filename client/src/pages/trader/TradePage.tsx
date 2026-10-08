@@ -143,7 +143,7 @@ function OrderTicket({ symbol }: { symbol: string }) {
         <span className="font-mono text-sm text-slate-300">{fmtPrice(price)}</span>
       </div>
       <Stepper label="Investment" value={investment} onChange={setInvestment} step={10} min={10} max={100_000} format={(v) => `$${fmtNum(v, 0)}`} />
-      <div className="grid grid-cols4 grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1.5">
         {[50, 100, 500, 1000].map((v) => (
           <button key={v} className={`rounded-lg py-1 text-xs font-semibold ${investment === v ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} onClick={() => setInvestment(v)}>
             ${v}
@@ -317,7 +317,7 @@ export function TradePage() {
   return (
     <div className="flex h-full min-h-[640px] flex-col lg:flex-row">
       <section className="relative flex min-h-[420px] min-w-0 flex-1 flex-col">
-        <div className="absolute top-3 left-3 z-20 flex flex-wrap items-center gap-3">
+        <div className="z-20 flex flex-wrap items-center gap-2 p-2 sm:absolute sm:top-3 sm:left-3 sm:gap-3 sm:p-0">
           <AssetPicker symbol={symbol} onPick={(s) => setParams({ symbol: s })} />
           <div className="flex rounded-xl bg-slate-900/90 p-1 ring-1 ring-slate-800">
             {TFS.map((t) => (
@@ -327,11 +327,11 @@ export function TradePage() {
             ))}
           </div>
         </div>
-        <div className="absolute top-[70px] left-4 z-10 flex flex-col gap-1 sm:top-4 sm:left-auto sm:right-24 sm:items-end">
+        <div className="absolute top-4 right-24 z-10 hidden flex-col items-end gap-1 sm:flex">
           <UtcClock />
           {m && <span className="text-[11px] text-slate-500">Spread {fmtPct(m.spreadPct, 3)} · Vol 24h ${fmtNum(m.volume24h, 0)}</span>}
         </div>
-        <div className="min-h-0 flex-1 pt-16">
+        <div className="min-h-[340px] flex-1 sm:min-h-0 sm:pt-16">
           {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading market data…</div>}
         </div>
       </section>

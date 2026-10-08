@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler as h } from '../utils/errors';
 import { requireAuth, requireFreshSecondFactor, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { validateBody as v } from '../middleware/validate';
-import { authLimiter, demoOrderLimiter, protectedActionLimiter } from '../middleware/rateLimit';
+import { authLimiter, demoOrderLimiter, protectedActionLimiter, sessionLimiter } from '../middleware/rateLimit';
 import { authController, schemas as authSchemas } from '../controllers/authController';
 import { userController, userSchemas } from '../controllers/userController';
 import { exchangeController, exchangeSchemas } from '../controllers/exchangeController';
@@ -33,14 +33,14 @@ export function buildApiRouter() {
   auth.post('/register', authLimiter, v(authSchemas.register), h(authController.register));
   auth.post('/google', authLimiter, v(authSchemas.google), h(authController.google));
   for (const provider of ['google', 'github'] as const) {
-    auth.get(`/${provider}/start`, authLimiter, h(authController.oauthStart(provider)));
-    auth.get(`/${provider}/callback`, authLimiter, h(authController.oauthCallback(provider)));
+    auth.get(`/${provider}/start`, sessionLimiter, h(authController.oauthStart(provider)));
+    auth.get(`/${provider}/callback`, sessionLimiter, h(authController.oauthCallback(provider)));
   }
   auth.post('/2fa/email/send-login', authLimiter, v(authSchemas.challenge), h(authController.sendLoginCode));
   auth.post('/verify-email', authLimiter, v(authSchemas.verifyEmail), h(authController.verifyEmail));
   auth.post('/login', authLimiter, v(authSchemas.login), h(authController.login));
   auth.post('/2fa/verify', authLimiter, v(authSchemas.verify2fa), h(authController.verify2fa));
-  auth.post('/refresh', authLimiter, h(authController.refresh));
+  auth.post('/refresh', sessionLimiter, h(authController.refresh));
   auth.post('/logout', h(authController.logout));
   auth.get('/me', requireAuth, h(authController.me));
   auth.post('/2fa/setup', requireAuth, h(authController.setup2fa));

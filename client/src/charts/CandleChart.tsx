@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { CandlestickSeries, HistogramSeries, LineStyle, createChart, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { Candle } from '../types';
-import { cssVar, useTheme } from '../hooks/useTheme';
+import { useTheme } from '../hooks/useTheme';
 
 export interface PriceMarker {
   price: number;
@@ -24,7 +24,8 @@ export function CandleChart({ candles, live, lines = [], height = 320, fill = fa
 
   useEffect(() => {
     if (!el.current) return;
-    const text = cssVar('--color-slate-400', '#94a3b8');
+    // Explicit hex: the chart library cannot parse Tailwind's oklch() palette values.
+    const text = theme === 'light' ? '#475569' : '#94a3b8';
     const grid = theme === 'light' ? '#e2e8f0' : '#1a2438';
     const c = createChart(el.current, {
       height: fill ? el.current.clientHeight || height : height,

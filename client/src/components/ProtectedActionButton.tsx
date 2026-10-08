@@ -97,7 +97,7 @@ export function ProtectedActionButton({ label, title, description, endpoint, met
               <input className="input tracking-[0.4em]" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="123456" autoComplete="one-time-code" />
               {factor === 'email' && (
                 <button type="button" className="btn-ghost whitespace-nowrap" onClick={sendEmail}>
-                  {sent ? 'Resend' : 'Email code'}
+                  {sent ? 'Resend' : 'Send code'}
                 </button>
               )}
             </div>

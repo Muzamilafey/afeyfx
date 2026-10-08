@@ -49,10 +49,3 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 }
 
 export const useTheme = () => useContext(Ctx);
-
-/** Resolve a palette CSS variable (for canvas charts that cannot use classes). */
-export function cssVar(name: string, fallback: string) {
-  if (typeof document === 'undefined') return fallback;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
-}

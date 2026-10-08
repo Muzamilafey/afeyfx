@@ -2,21 +2,32 @@
 
 Base path `/api`. Every endpoint except `/api/auth/register|login|2fa/verify|refresh|logout` and the public
 `GET /health` needs `Authorization: Bearer <accessToken>`.
-Roles: **V** = viewer+, **T** = trader+, **A** = admin. **🔐** = protected: admin with 2FA enabled, plus a `totp` field
-(current 6-digit code) in the JSON body.
+Roles: **V** = viewer+, **T** = trader+, **A** = admin. **🔐** = protected: admin with a second factor enabled, plus a fresh `totp` (authenticator) or `emailCode`
+(from `POST /api/auth/2fa/email/send`) in the JSON body. System-book endpoints (signals, orders, positions, trades, portfolio, risk, AI, notifications, health) are admin-only; list endpoints show the system book unless `owner=all|<userId>` is passed.
 
 Errors look like `{ "error": { "code": "...", "message": "...", "details"?: ... } }`.
 
 ## Auth `/api/auth`
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/register` | `{email,name,password}`. Only works while no users exist (the first user becomes admin) |
-| POST | `/login` | `{email,password}` → `{accessToken,user}` or `{requires2fa,challengeToken}`. Sets the refresh cookie |
+| POST | `/register` | `{email,name,password}`. The first user becomes admin; after that it creates a **trader** (if `ALLOW_PUBLIC_SIGNUP`) |
+| POST | `/login` | `{email,password,portal?:'trader'|'admin'}` → `{accessToken,user}` or `{requires2fa,challengeToken}`. Sets the refresh cookie |
 | POST | `/2fa/verify` | `{challengeToken,code}` → `{accessToken,user}` |
 | POST | `/refresh` | Uses the httpOnly cookie and rotates the token |
 | POST | `/logout` | Revokes the refresh-token family |
 | GET | `/me` | Current user |
-| POST | `/2fa/setup` · `/2fa/confirm` `{code}` · `/2fa/disable` `{password,code}` | TOTP enrolment |
+| POST | `/2fa/setup` · `/2fa/confirm` `{code}` · `/2fa/disable` `{password?,code}` | Authenticator (TOTP) enrolment |
+| GET | `/config` | Public: which sign-in methods are enabled (no secrets) |
+| GET | `/google/start` · `/google/callback` · `/github/start` · `/github/callback` | Social sign-in (redirect flow, CSRF state cookie) |
+| POST | `/google` `{credential}` | Alternative: verify a Google Identity Services ID token |
+| POST | `/verify-email` `{uid,token}` · `/resend-verification` | Email verification |
+| POST | `/2fa/email/send-login` `{challengeToken}` | Email a login code for a pending 2FA challenge |
+| POST | `/2fa/email/send` `{context?}` · `/2fa/email/enable` `{code}` · `/2fa/email/disable` `{totp|emailCode}` | Email codes as a second factor |
+| POST | `/password` `{currentPassword?,newPassword}` | Set (social-only accounts) or change the password |
+
+## Personal demo account `/api/account` (any signed-in user; trading requires a verified email)
+`GET /` (account + user) · `POST /orders` `{symbol,direction:'LONG'|'SHORT',investment,stopLossPct,takeProfitPct?,idempotencyKey?}` ·
+`GET /positions?status=OPEN|CLOSED` · `POST /positions/:id/close` · `GET /history` · `GET /performance` · `POST /demo/reset` (only when flat)
 
 ## Users `/api/users` (A)
 `GET /` · `POST /` `{email,name,password,role}` · `PATCH /:id` `{role?,active?,name?}`

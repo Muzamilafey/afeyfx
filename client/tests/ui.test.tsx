@@ -3,6 +3,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { ModeBanner, ModePill } from '../src/components/ModeBanner';
 import { ProtectedActionButton } from '../src/components/ProtectedActionButton';
 import { fmtPct, fmtSigned, pnlClass, fmtRatio } from '../src/utils/format';
+import { passwordChecks } from '../src/components/auth/fields';
+
+const authState = { user: { twoFactorEnabled: true, emailOtpEnabled: true } as Record<string, unknown> };
+vi.mock('../src/hooks/useAuth', () => ({ useAuth: () => authState }));
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -40,6 +44,38 @@ describe('ProtectedActionButton', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/system/emergency/stop-new-trades');
     expect(JSON.parse(init.body as string)).toEqual({ totp: '123456' });
+  });
+
+  it('can use an emailed code instead of the authenticator', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
+    render(<ProtectedActionButton label="Cancel orders" title="Cancel all open orders" description="d" endpoint="/system/emergency/cancel-orders" />);
+    fireEvent.click(screen.getByText('Cancel orders'));
+    fireEvent.click(screen.getByRole('button', { name: /Email code/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send code' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/auth/2fa/email/send');
+    fireEvent.change(screen.getByPlaceholderText('123456'), { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('/api/system/emergency/cancel-orders');
+    expect(JSON.parse(init.body as string)).toEqual({ emailCode: '654321' });
+  });
+
+  it('explains how to enable a second factor when none is set up', () => {
+    authState.user = { twoFactorEnabled: false, emailOtpEnabled: false };
+    render(<ProtectedActionButton label="Shutdown" title="Shutdown" description="d" endpoint="/x" />);
+    fireEvent.click(screen.getByText('Shutdown'));
+    expect(screen.getByText(/Enable an authenticator app or email codes/)).toBeInTheDocument();
+    authState.user = { twoFactorEnabled: true, emailOtpEnabled: true };
+  });
+});
+
+describe('password rules (match the server)', () => {
+  it('requires 12+ chars with upper, lower and a digit', () => {
+    expect(passwordChecks('short').every((c) => c.ok)).toBe(false);
+    expect(passwordChecks('alllowercase123').every((c) => c.ok)).toBe(false);
+    expect(passwordChecks('GoodPassword123').every((c) => c.ok)).toBe(true);
   });
 });
 

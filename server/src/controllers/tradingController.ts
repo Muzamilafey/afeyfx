@@ -14,6 +14,13 @@ import { AppError } from '../utils/errors';
 import { env } from '../config/env';
 
 const modeOf = (q: unknown) => (q === 'LIVE' ? 'LIVE' : q === 'PAPER' ? 'PAPER' : tradingState.get().mode);
+/** System book by default; admins may pass owner=all or owner=<userId> to inspect personal demo accounts. */
+const ownerQ = (req: Request): Record<string, unknown> => {
+  const o = String(req.query.owner ?? '');
+  if (o === 'all') return {};
+  if (/^[a-f0-9]{24}$/i.test(o)) return { user: o };
+  return { user: null };
+};
 const page = (req: Request) => ({ limit: Math.min(Number(req.query.limit ?? 50), 500), skip: Math.max(0, Number(req.query.skip ?? 0)) });
 
 export const tradingSchemas = {
@@ -29,7 +36,7 @@ export const tradingSchemas = {
 
 export const tradingController = {
   async signals(req: Request, res: Response) {
-    const q: Record<string, unknown> = { mode: modeOf(req.query.mode) };
+    const q: Record<string, unknown> = { mode: modeOf(req.query.mode), ...ownerQ(req) };
     if (req.query.strategy) q.strategyKey = String(req.query.strategy);
     if (req.query.symbol) q.symbol = String(req.query.symbol);
     const { limit, skip } = page(req);
@@ -37,7 +44,7 @@ export const tradingController = {
   },
 
   async orders(req: Request, res: Response) {
-    const q: Record<string, unknown> = { mode: modeOf(req.query.mode) };
+    const q: Record<string, unknown> = { mode: modeOf(req.query.mode), ...ownerQ(req) };
     if (req.query.status) q.status = String(req.query.status);
     const { limit, skip } = page(req);
     res.json({ orders: await OrderModel.find(q).sort({ createdAt: -1 }).skip(skip).limit(limit).lean() });
@@ -69,7 +76,7 @@ export const tradingController = {
   },
 
   async positions(req: Request, res: Response) {
-    const q: Record<string, unknown> = { mode: modeOf(req.query.mode) };
+    const q: Record<string, unknown> = { mode: modeOf(req.query.mode), ...ownerQ(req) };
     q.status = req.query.status === 'CLOSED' ? 'CLOSED' : req.query.status === 'ALL' ? { $in: ['OPEN', 'CLOSED'] } : 'OPEN';
     const { limit, skip } = page(req);
     res.json({ positions: await PositionModel.find(q).sort({ openedAt: -1 }).skip(skip).limit(limit).lean() });
@@ -86,7 +93,7 @@ export const tradingController = {
   },
 
   async trades(req: Request, res: Response) {
-    const q: Record<string, unknown> = { mode: modeOf(req.query.mode) };
+    const q: Record<string, unknown> = { mode: modeOf(req.query.mode), ...ownerQ(req) };
     if (req.query.strategy) q.strategyKey = String(req.query.strategy);
     if (req.query.symbol) q.symbol = String(req.query.symbol);
     const { limit, skip } = page(req);

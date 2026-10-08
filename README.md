@@ -67,13 +67,15 @@ Requirements: Node 20+ and a local MongoDB (or Docker: `docker run -d -p 127.0.0
 
 ```bash
 cp .env.example .env            # then fill in the secrets: ./scripts/generate-secrets.sh
+                                # no exchange access locally? set MARKET_DATA_SOURCE=simulated (dev only)
 npm run install:all
 npm run dev:server              # API + engine on :5000 (PAPER mode)
 npm run dev:client              # dashboard on http://localhost:5173 (proxies /api and /socket.io)
 ```
 
-1. Open the dashboard and create the first account. It becomes the admin. After that, public registration is closed.
-2. Go to **Account & 2FA** and enable two-factor authentication. Protected actions need it.
+1. Open `/admin/login` and create the first account (it becomes the admin). Traders sign up at `/signup`.
+2. Verify your email (without SMTP in dev, the link is printed in the server log), then enable 2FA in
+   Account & 2FA (authenticator or email codes). Protected actions need it.
 3. Import history: Backtests → *Import history*, or `npm --prefix server run import-candles -- BTC/USDT 1h 365`.
 4. Run backtests and a walk-forward test, then promote a strategy through its lifecycle to **PAPER** and enable it.
 
@@ -111,21 +113,34 @@ ecosystem.config.cjs   PM2
 
 ## Screenshots
 
-Captured from the running app with headless Chromium (`docs/screenshots/`). The sandbox where these were taken
-can't reach exchanges, so there are no live prices and the stale-data breaker is open. That's the fail-closed
-behaviour working as intended. Backtests use a **synthetic** `SYN/USDT` series, and the results are shown as
-they came out, losses included.
+These were captured from the running app with headless Chromium, using the development-only
+**simulated market feed** (exchanges are unreachable in the sandbox where they were taken). The "SIMULATED
+MARKET DATA" badge is shown whenever that feed is on.
 
 | | |
 |---|---|
-| ![Dashboard](docs/screenshots/04-dashboard.png) | ![Walk-forward](docs/screenshots/06-backtest-walk-forward.png) |
-| Dashboard (PAPER) | Walk-forward backtest |
-| ![Strategies](docs/screenshots/08-strategies.png) | ![Performance](docs/screenshots/09-performance-report.png) |
-| Strategy lifecycle | Profitability report (separated) |
-| ![Admin controls](docs/screenshots/11-admin-controls.png) | ![Emergency 2FA](docs/screenshots/12-emergency-2fa-dialog.png) |
-| Emergency controls & health | Protected action (2FA) |
-| ![Live preflight](docs/screenshots/14-admin-live-preflight.png) | ![Risk](docs/screenshots/15-admin-risk-breaker.png) |
-| Live preflight (blocked) | Risk limits & circuit breaker |
+| ![Trader terminal](docs/screenshots/07-terminal-dark.png) | ![Terminal light](docs/screenshots/11-terminal-light.png) |
+| Trader terminal (dark) | Trader terminal (light) |
+| ![Login](docs/screenshots/03-trader-login-light.png) | ![Admin login](docs/screenshots/01-admin-login.png) |
+| Trader sign-in: Google, GitHub, email | Separate admin console sign-in |
+| ![Email 2FA](docs/screenshots/14-login-email-2fa-dark.png) | ![Security](docs/screenshots/15-account-security-dark.png) |
+| Sign-in with an emailed code | Account security (2FA, email codes, password, linked logins) |
+| ![Admin dashboard](docs/screenshots/18-admin-dashboard-dark.png) | ![Emergency](docs/screenshots/19-admin-emergency-email-code.png) |
+| Admin console | Protected action confirmed with an email code |
+| ![Mobile](docs/screenshots/16-mobile-terminal-dark.png) | ![Markets](docs/screenshots/12-markets-light.png) |
+| Mobile | Markets |
+
+## Accounts & sign-in
+
+* **Traders** sign up at `/signup` with email and password, **Continue with Google** or **Continue with GitHub**.
+  Each trader gets a personal **$10,000 demo (PAPER) account**, isolated from other users and from the
+  system strategy book. Placing trades requires a **verified email**.
+* **Admins** sign in at `/admin/login` (admin accounts only) and use the admin console at `/admin`. The first
+  account ever created becomes the admin, or you can run `npm --prefix server run create-admin`.
+* **Second factors:** an authenticator app (TOTP) and/or **email codes**. Both work at login and for every
+  protected admin action. Google and GitHub sign-in never bypass 2FA.
+* **Light / dark / system theme** everywhere (toggle in the header or under Account → Appearance).
+* **Not included on purpose:** deposits and withdrawals. Demo accounts can be reset to $10,000 instead.
 
 ## Documentation
 

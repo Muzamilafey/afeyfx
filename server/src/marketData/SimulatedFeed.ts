@@ -55,10 +55,10 @@ export class SimulatedFeed {
     for (const sym of this.symbols) {
       const base = SEED_PRICES[sym.split('/')[0]] ?? 100;
       const series: Candle[] = [];
-      let p = base * (0.85 + this.rand() * 0.3);
-      let vol = 0.0012;
+      let p = base;
+      let vol = 0.0005;
       for (let i = minutes; i >= 1; i--) {
-        vol = Math.min(0.006, Math.max(0.0004, vol * (1 + 0.05 * this.gauss())));
+        vol = Math.min(0.0015, Math.max(0.00015, vol * (1 + 0.05 * this.gauss())));
         const open = p;
         const close = open * Math.exp(vol * this.gauss());
         const high = Math.max(open, close) * (1 + Math.abs(this.gauss()) * vol * 0.4);
@@ -66,6 +66,15 @@ export class SimulatedFeed {
         series.push({ timestamp: nowMin - i * 60_000, open, high, low, close, volume: (20 + this.rand() * 80) * (base > 1000 ? 0.05 : base > 10 ? 2 : 2000) });
         p = close;
       }
+      // Anchor the walk so the latest price sits near a realistic level for the asset.
+      const scale = (base * (0.98 + this.rand() * 0.04)) / p;
+      for (const c of series) {
+        c.open *= scale;
+        c.high *= scale;
+        c.low *= scale;
+        c.close *= scale;
+      }
+      p *= scale;
       const byTf = new Map<Timeframe, Candle[]>();
       for (const tf of this.timeframes) byTf.set(tf, aggregate(series, TIMEFRAME_MS[tf]).slice(-bars));
       out.set(sym, byTf);

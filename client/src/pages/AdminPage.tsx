@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Badge, Card, Empty, ErrorText, Tabs, statusColor } from '../components/ui';
 import { ProtectedActionButton } from '../components/ProtectedActionButton';
 import { useApi } from '../hooks/useApi';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, hasSecondFactor } from '../hooks/useAuth';
 import { useSocketEvent } from '../hooks/useSocketEvent';
 import { useTradingStatus } from '../hooks/useTradingStatus';
 import { api } from '../services/api';
@@ -16,9 +16,9 @@ export function AdminPage() {
   const { user } = useAuth();
   return (
     <div className="space-y-4">
-      {!user?.twoFactorEnabled && (
+      {!hasSecondFactor(user) && (
         <div className="rounded-lg border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
-          Enable 2FA (Account & 2FA) — every protected admin action requires a fresh 2FA code.
+          Enable a second factor (authenticator app or email codes) in Account & 2FA — every protected admin action requires a fresh code.
         </div>
       )}
       <Tabs tabs={TABS} value={tab} onChange={setTab} />
