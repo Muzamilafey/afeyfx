@@ -3,6 +3,7 @@ import { AuthService } from '../services/AuthService';
 import { AppError } from '../utils/errors';
 import type { Role } from '../types';
 import { audit } from '../services/AuditService';
+import { env } from '../config/env';
 
 /** Verifies the Bearer access token. Rejects 2FA-pending challenge tokens. */
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
@@ -11,7 +12,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const c = AuthService.verifyAccess(h.slice(7));
     if (c.typ !== 'access') return next(new AppError(401, 'Invalid token type', 'UNAUTHENTICATED'));
-    req.user = { id: c.sub, email: c.email, role: c.role, twoFactorEnabled: c.tfa };
+    req.user = { id: c.sub, email: c.email, role: c.role, twoFactorEnabled: c.tfa, emailVerified: c.ev === true };
     return next();
   } catch {
     return next(new AppError(401, 'Invalid or expired token', 'UNAUTHENTICATED'));
@@ -33,16 +34,22 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
+/** Trading and administrative actions require a verified email address (REQUIRE_EMAIL_VERIFICATION). */
+export function requireVerifiedEmail(req: Request, _res: Response, next: NextFunction) {
+  if (!env.REQUIRE_EMAIL_VERIFICATION || req.user?.emailVerified) return next();
+  return next(new AppError(403, 'Verify your email address to use this feature', 'EMAIL_NOT_VERIFIED'));
+}
+
 /**
  * Protected actions (live mode, emergency controls, credential changes) require the admin to have
- * 2FA enabled and to re-authenticate with a fresh TOTP code in the request body (`totp`).
+ * a second factor enabled and to re-authenticate with a FRESH code in the request body: either an
+ * authenticator code (`totp`) or a single-use emailed code (`emailCode`).
  */
-export async function requireFreshTotp(req: Request, _res: Response, next: NextFunction) {
+export async function requireFreshSecondFactor(req: Request, _res: Response, next: NextFunction) {
   try {
     if (!req.user) throw new AppError(401, 'Authentication required', 'UNAUTHENTICATED');
     if (!req.user.twoFactorEnabled) throw new AppError(403, 'Two-factor authentication must be enabled for this action', 'TWO_FACTOR_REQUIRED');
-    const code = String(req.body?.totp ?? '');
-    if (!(await AuthService.verifyUserTotp(req.user.id, code))) {
+    if (!(await AuthService.verifySecondFactor(req.user.id, { totp: req.body?.totp, emailCode: req.body?.emailCode }))) {
       void audit(req, { action: 'PROTECTED_ACTION_2FA_FAILED', resource: req.originalUrl, success: false });
       throw new AppError(401, 'Valid 2FA code required for this action', 'INVALID_2FA');
     }
@@ -51,3 +58,6 @@ export async function requireFreshTotp(req: Request, _res: Response, next: NextF
     next(err);
   }
 }
+
+/** @deprecated alias kept for readability in older code. */
+export const requireFreshTotp = requireFreshSecondFactor;

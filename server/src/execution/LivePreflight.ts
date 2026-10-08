@@ -61,6 +61,7 @@ export async function runLivePreflight(exchange = env.DEFAULT_EXCHANGE, adapter:
   });
   await safe(4, 'Market-data connection', async () => {
     const md = getMarketDataService();
+    if (env.MARKET_DATA_SOURCE === 'simulated') return [false, 'Simulated market data is active - real exchange data required'];
     const ages = md.symbols.map((s) => marketDataCache.dataAgeMs(exchange, s));
     const worst = Math.max(...ages);
     return [md.isRunning && worst <= env.MARKET_DATA_STALE_MS, `running=${md.isRunning}, ${Number.isFinite(worst) ? `worst data age ${Math.round(worst)}ms` : 'no market data received'}`];

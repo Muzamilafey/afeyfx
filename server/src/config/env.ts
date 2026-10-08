@@ -52,6 +52,24 @@ const schema = z.object({
   JWT_REFRESH_TTL_DAYS: num(7),
   ENCRYPTION_KEY: z.string().default(''),
   COOKIE_SECURE: bool(true),
+  /** Public URL of the dashboard (used in email links). Defaults to the first CLIENT_ORIGIN. */
+  APP_URL: z.string().default(''),
+  REQUIRE_EMAIL_VERIFICATION: bool(true),
+
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: num(587),
+  SMTP_SECURE: bool(false),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  MAIL_FROM: z.string().default('AfeyFX <no-reply@localhost>'),
+
+  /** Public sign-up for trader accounts (email/password, Google, GitHub). New accounts get role "trader" and a demo account. */
+  ALLOW_PUBLIC_SIGNUP: bool(true),
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GITHUB_CLIENT_ID: z.string().default(''),
+  GITHUB_CLIENT_SECRET: z.string().default(''),
+  /** Public base URL of the API (for OAuth callbacks). Defaults to APP_URL. */
+  API_PUBLIC_URL: z.string().default(''),
 
   ANTHROPIC_API_KEY: z.string().default(''),
   AI_ENABLED: bool(false),
@@ -73,6 +91,8 @@ const schema = z.object({
   MARKET_SYMBOLS: z.string().default('BTC/USDT,ETH/USDT'),
   MARKET_TIMEFRAMES: z.string().default('1m,5m,15m,1h'),
   MARKET_DATA_ENABLED: bool(true),
+  /** exchange = real exchange feeds. simulated = synthetic random-walk feed for development/demo ONLY (refused in production; LIVE impossible). */
+  MARKET_DATA_SOURCE: z.enum(['exchange', 'simulated']).default('exchange'),
   MARKET_DATA_STALE_MS: num(30000),
   JOBS_ENABLED: bool(true),
 
@@ -121,6 +141,7 @@ function load(): Env {
     if (env.JWT_REFRESH_SECRET.length < 32) missing.push('JWT_REFRESH_SECRET (>=32 chars)');
     if (!/^[0-9a-fA-F]{64}$/.test(env.ENCRYPTION_KEY)) missing.push('ENCRYPTION_KEY (64 hex chars)');
     if (missing.length) throw new Error(`Missing/weak production secrets: ${missing.join(', ')}`);
+    if (env.MARKET_DATA_SOURCE === 'simulated') throw new Error('MARKET_DATA_SOURCE=simulated is not allowed in production');
   }
   return env;
 }

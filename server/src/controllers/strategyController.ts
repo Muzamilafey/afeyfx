@@ -93,7 +93,7 @@ export const strategyController = {
       if (!runs) throw new AppError(412, to === 'PAPER' ? `An out-of-sample (walk-forward) backtest with at least ${MIN_EVIDENCE_TRADES} trades is required before paper trading` : `A completed backtest with at least ${MIN_EVIDENCE_TRADES} trades is required`);
     }
     if (to === 'APPROVED') {
-      const paperTrades = await TradeModel.countDocuments({ mode: 'PAPER', strategyKey: doc.key });
+      const paperTrades = await TradeModel.countDocuments({ mode: 'PAPER', strategyKey: doc.key, user: null });
       if (paperTrades < 30) throw new AppError(412, `At least 30 paper trades required before approval (have ${paperTrades})`);
       doc.approvedBy = req.user!.id as never;
       doc.approvedAt = new Date();

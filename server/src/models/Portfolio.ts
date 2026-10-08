@@ -2,7 +2,9 @@ import { Schema, model } from 'mongoose';
 
 const portfolioSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, unique: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true },
+    /** null = the system (strategy) book; a user id = that user's personal demo account. */
+    owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     baseCurrency: { type: String, default: 'USDT' },
     startingBalance: { type: Number, default: 0 },
     balance: { type: Number, default: 0 }, // cash
@@ -22,5 +24,7 @@ const portfolioSchema = new Schema(
   },
   { timestamps: true },
 );
+
+portfolioSchema.index({ mode: 1, owner: 1 }, { unique: true });
 
 export const PortfolioModel = model('Portfolio', portfolioSchema);

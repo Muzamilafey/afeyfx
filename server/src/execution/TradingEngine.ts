@@ -106,7 +106,7 @@ export class TradingEngine {
     if (Date.now() - (last.timestamp + step) > step * 1.5) return { ...base, action: 'HOLD', skipped: 'Candle data stale' };
 
     const regime = marketRegimeService.detect(candles);
-    const open = await PositionModel.findOne({ mode, symbol, status: 'OPEN', strategyKey });
+    const open = await PositionModel.findOne({ mode, symbol, status: 'OPEN', strategyKey, user: null });
     const ctx = {
       symbol,
       timeframe,
@@ -184,7 +184,7 @@ export class TradingEngine {
     // Risk evaluation with live account state.
     const portfolio = await portfolioService.revalue(mode);
     const pv = portfolioService.view(portfolio);
-    const openPositions = await PositionModel.find({ mode, status: 'OPEN' });
+    const openPositions = await PositionModel.find({ mode, status: 'OPEN', user: null });
     const market = await Market.findOne({ exchange, symbol }).lean();
     const correlations: Record<string, number> = {};
     for (const p of openPositions) {
@@ -265,7 +265,7 @@ export class TradingEngine {
     const b = marketDataCache.getOrderBook(exchange, symbol)?.data;
     const bidDepth = b?.bids.reduce((s, l) => s + l.amount * l.price, 0) ?? 0;
     const askDepth = b?.asks.reduce((s, l) => s + l.amount * l.price, 0) ?? 0;
-    const open = await PositionModel.find({ status: 'OPEN', mode: tradingState.get().mode }).lean();
+    const open = await PositionModel.find({ status: 'OPEN', mode: tradingState.get().mode, user: null }).lean();
     return {
       symbol,
       timeframe,

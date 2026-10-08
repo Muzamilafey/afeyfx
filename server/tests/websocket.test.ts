@@ -40,7 +40,7 @@ describe('Socket.IO', () => {
   });
 
   it('streams engine events to authenticated clients and throttles price updates', async () => {
-    const token = AuthService.signAccess({ sub: '1', email: 'a@b.c', role: 'viewer', tfa: false });
+    const token = AuthService.signAccess({ sub: '1', email: 'a@b.c', role: 'admin', tfa: false });
     const s = await connect(token);
     const trade = new Promise((r) => s.on('trade', r));
     const prices: unknown[] = [];
@@ -52,5 +52,23 @@ describe('Socket.IO', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(prices.length).toBe(1);
     s.close();
+  });
+
+  it('routes account events only to their owner; system-book events only to admins', async () => {
+    const alice = await connect(AuthService.signAccess({ sub: 'aaaaaaaaaaaaaaaaaaaaaaaa', email: 'a@x.io', role: 'trader', tfa: false }));
+    const bob = await connect(AuthService.signAccess({ sub: 'bbbbbbbbbbbbbbbbbbbbbbbb', email: 'b@x.io', role: 'trader', tfa: false }));
+    const got: Record<string, unknown[]> = { alice: [], bob: [] };
+    alice.on('trade', (t) => got.alice.push(t));
+    bob.on('trade', (t) => got.bob.push(t));
+    alice.on('signal', (t) => got.alice.push(t));
+    await new Promise((r) => setTimeout(r, 50));
+    eventBus.publish('trade', { id: 'mine', user: 'aaaaaaaaaaaaaaaaaaaaaaaa' });
+    eventBus.publish('trade', { id: 'system' });
+    eventBus.publish('signal', { id: 'engine-signal' });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(got.alice).toEqual([{ id: 'mine', user: 'aaaaaaaaaaaaaaaaaaaaaaaa' }]);
+    expect(got.bob).toEqual([]);
+    alice.close();
+    bob.close();
   });
 });

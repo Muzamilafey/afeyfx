@@ -6,6 +6,21 @@ import { eventBus, type BusEvent } from '../utils/eventBus';
 import { setSocketClientCount } from '../services/HealthService';
 import { logger } from '../utils/logger';
 
+/** Market events go to everyone. Account events go to their owner; system-book events to admins only. */
+const PUBLIC_EVENTS = new Set<BusEvent>(['price', 'candle', 'exchange-status']);
+const OWNED_EVENTS = new Set<BusEvent>(['order', 'trade', 'position', 'portfolio']);
+
+export function route(ev: BusEvent, payload: unknown): string | string[] {
+  if (PUBLIC_EVENTS.has(ev)) return 'dashboard';
+  if (OWNED_EVENTS.has(ev)) {
+    const p = (payload ?? {}) as { user?: unknown; owner?: unknown };
+    const owner = p.user ?? p.owner;
+    // A personal account's events go only to that user (admins see the system book, not other users' accounts).
+    return owner ? `user:${String(owner)}` : 'admins';
+  }
+  return 'admins';
+}
+
 /** Events streamed to authenticated dashboard clients. */
 const STREAMED: BusEvent[] = ['price', 'candle', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'system'];
 
@@ -36,6 +51,8 @@ export function attachSocket(server: HttpServer) {
   io.on('connection', (socket) => {
     setSocketClientCount(io.engine.clientsCount);
     socket.join('dashboard');
+    socket.join(`user:${socket.data.user.id}`);
+    if (socket.data.user.role === 'admin') socket.join('admins');
     socket.on('disconnect', () => setSocketClientCount(io.engine.clientsCount));
   });
 
@@ -48,7 +65,7 @@ export function attachSocket(server: HttpServer) {
         if (now - (lastPrice.get(sym) ?? 0) < 250) return;
         lastPrice.set(sym, now);
       }
-      io.to('dashboard').emit(ev, payload);
+      io.to(route(ev, payload)).emit(ev, payload);
     };
     eventBus.on(ev, fn);
     return [ev, fn] as const;

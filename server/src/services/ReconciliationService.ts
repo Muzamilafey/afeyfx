@@ -57,7 +57,7 @@ export class ReconciliationService {
       for (const o of filled) await orderExecutionService.syncFills(o);
 
       // 3) Positions (derivatives) / base balances (spot)
-      const localPos = await PositionModel.find({ mode: 'LIVE', exchange, status: 'OPEN' });
+      const localPos = await PositionModel.find({ mode: 'LIVE', exchange, status: 'OPEN', user: null });
       const exPos = await adapter.getPositions();
       if (exPos.length) {
         for (const p of exPos) {
@@ -74,7 +74,7 @@ export class ReconciliationService {
           if (l.direction === 'LONG' && (!b || b.total + 1e-9 < l.amount * 0.99)) d.push({ kind: 'POSITION', severity: 'CRITICAL', detail: `${l.symbol}: local long ${l.amount} but exchange ${baseCcy} balance ${b?.total ?? 0}` });
         }
         // 4) Quote balance vs local accounting
-        const portfolio = await PortfolioModel.findOne({ mode: 'LIVE' });
+        const portfolio = await PortfolioModel.findOne({ mode: 'LIVE', owner: null });
         const quote = balances.find((x) => x.currency === (portfolio?.baseCurrency ?? 'USDT'));
         if (portfolio && quote) {
           const diff = Math.abs(quote.total - portfolio.balance);

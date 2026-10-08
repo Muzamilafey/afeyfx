@@ -9,6 +9,9 @@ import { computeMetrics, type PerformanceMetrics } from './metrics';
 import type { Direction } from '../types';
 
 type Mode = 'PAPER' | 'LIVE';
+/** Account owner: null = system strategy book; otherwise a user id (personal demo account). */
+export type Owner = string | null;
+const ownerQ = (owner: Owner) => (owner ? owner : null);
 
 const startOfUtcDay = (d = new Date()) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 const startOfUtcWeek = (d = new Date()) => {
@@ -22,13 +25,14 @@ const startOfUtcWeek = (d = new Date()) => {
  * by mode so paper results can never be mixed into live results.
  */
 export class PortfolioService {
-  async get(mode: Mode) {
-    let p = await PortfolioModel.findOne({ mode });
+  async get(mode: Mode, owner: Owner = null) {
+    let p = await PortfolioModel.findOne({ mode, owner: ownerQ(owner) });
     if (!p) {
+      if (mode === 'LIVE' && owner) throw new Error('Personal accounts are demo (PAPER) only');
       const start = mode === 'PAPER' ? env.PAPER_STARTING_BALANCE : 0;
       p = await PortfolioModel.findOneAndUpdate(
-        { mode },
-        { $setOnInsert: { mode, startingBalance: start, balance: start, equity: start, available: start, peakEquity: start, dayStartEquity: start, dayStartAt: startOfUtcDay(), weekStartEquity: start, weekStartAt: startOfUtcWeek() } },
+        { mode, owner: ownerQ(owner) },
+        { $setOnInsert: { mode, owner: ownerQ(owner), startingBalance: start, balance: start, equity: start, available: start, peakEquity: start, dayStartEquity: start, dayStartAt: startOfUtcDay(), weekStartEquity: start, weekStartAt: startOfUtcWeek() } },
         { upsert: true, new: true },
       );
     }
@@ -36,9 +40,9 @@ export class PortfolioService {
   }
 
   /** Mark open positions to market and recompute equity, exposure, drawdown, day/week anchors. */
-  async revalue(mode: Mode) {
-    const p = await this.get(mode);
-    const positions = await PositionModel.find({ mode, status: 'OPEN' });
+  async revalue(mode: Mode, owner: Owner = null) {
+    const p = await this.get(mode, owner);
+    const positions = await PositionModel.find({ mode, status: 'OPEN', user: ownerQ(owner) });
     let unrealized = 0;
     let exposure = 0;
     let lockedShortCollateral = 0;
@@ -83,6 +87,7 @@ export class PortfolioService {
     const weekStart = p.weekStartEquity ?? p.equity;
     return {
       mode: p.mode,
+      owner: p.owner ? p.owner.toString() : null,
       baseCurrency: p.baseCurrency,
       startingBalance: p.startingBalance,
       balance: p.balance,
@@ -105,29 +110,30 @@ export class PortfolioService {
   }
 
   /** Apply a filled entry: debit cash (long: notional+fee; short: collateral+fee). */
-  async applyEntry(mode: Mode, notional: number, fee: number) {
-    await PortfolioModel.updateOne({ mode }, { $inc: { balance: -(notional + fee), fees: fee } });
+  async applyEntry(mode: Mode, notional: number, fee: number, owner: Owner = null) {
+    await this.get(mode, owner);
+    await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: -(notional + fee), fees: fee } });
   }
 
   /** Apply a filled exit and realize P&L. */
-  async applyExit(mode: Mode, direction: Direction, entryPrice: number, exitPrice: number, amount: number, fee: number) {
+  async applyExit(mode: Mode, direction: Direction, entryPrice: number, exitPrice: number, amount: number, fee: number, owner: Owner = null) {
     const gross = direction === 'LONG' ? (exitPrice - entryPrice) * amount : (entryPrice - exitPrice) * amount;
     const credit = direction === 'LONG' ? exitPrice * amount - fee : entryPrice * amount + gross - fee;
-    await PortfolioModel.updateOne({ mode }, { $inc: { balance: credit, fees: fee, realizedPnl: gross - fee } });
+    await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: credit, fees: fee, realizedPnl: gross - fee } });
     return gross;
   }
 
-  async snapshot(mode: Mode) {
-    const p = await this.revalue(mode);
-    const open = await PositionModel.countDocuments({ mode, status: 'OPEN' });
-    await PortfolioSnapshot.create({ mode, timestamp: new Date(), balance: p.balance, equity: p.equity, unrealizedPnl: p.unrealizedPnl, realizedPnl: p.realizedPnl, fees: p.fees, exposure: p.exposure, drawdown: p.drawdown, openPositions: open });
+  async snapshot(mode: Mode, owner: Owner = null) {
+    const p = await this.revalue(mode, owner);
+    const open = await PositionModel.countDocuments({ mode, status: 'OPEN', user: ownerQ(owner) });
+    await PortfolioSnapshot.create({ mode, owner: ownerQ(owner), timestamp: new Date(), balance: p.balance, equity: p.equity, unrealizedPnl: p.unrealizedPnl, realizedPnl: p.realizedPnl, fees: p.fees, exposure: p.exposure, drawdown: p.drawdown, openPositions: open });
   }
 
   /** Performance broken down by strategy / symbol / timeframe for one mode. Losing trades are included. */
-  async performance(mode: Mode, groupBy?: 'strategyKey' | 'symbol' | 'timeframe'): Promise<{ overall: PerformanceMetrics; groups: Record<string, PerformanceMetrics> }> {
-    const p = await this.get(mode);
-    const trades = await TradeModel.find({ mode }).sort({ closedAt: 1 }).lean();
-    const snaps = await PortfolioSnapshot.find({ mode }).sort({ timestamp: 1 }).lean();
+  async performance(mode: Mode, groupBy?: 'strategyKey' | 'symbol' | 'timeframe', owner: Owner = null): Promise<{ overall: PerformanceMetrics; groups: Record<string, PerformanceMetrics> }> {
+    const p = await this.get(mode, owner);
+    const trades = await TradeModel.find({ mode, user: ownerQ(owner) }).sort({ closedAt: 1 }).lean();
+    const snaps = await PortfolioSnapshot.find({ mode, owner: ownerQ(owner) }).sort({ timestamp: 1 }).lean();
     const curve = snaps.map((s) => ({ t: new Date(s.timestamp).getTime(), equity: s.equity ?? 0 }));
     const periodsPerYear = 365 * 24 * 12; // snapshots every 5 minutes
     const toLike = (t: (typeof trades)[number]) => ({ netPnl: t.netPnl ?? 0, fees: t.fees ?? 0, slippage: t.slippage ?? 0 });
@@ -151,3 +157,17 @@ export class PortfolioService {
 }
 
 export const portfolioService = new PortfolioService();
+
+/** Reset a personal demo account to the starting balance (only when flat). */
+export async function resetDemoAccount(owner: string) {
+  const open = await PositionModel.countDocuments({ mode: 'PAPER', status: 'OPEN', user: owner });
+  if (open) throw new Error('Close all open positions before resetting the demo account');
+  const start = env.PAPER_STARTING_BALANCE;
+  await PortfolioModel.updateOne(
+    { mode: 'PAPER', owner },
+    { $set: { startingBalance: start, balance: start, equity: start, available: start, unrealizedPnl: 0, realizedPnl: 0, fees: 0, exposure: 0, peakEquity: start, drawdown: 0, dayStartEquity: start, weekStartEquity: start } },
+    { upsert: true },
+  );
+  await PortfolioSnapshot.deleteMany({ mode: 'PAPER', owner });
+  return portfolioService.revalue('PAPER', owner);
+}

@@ -85,7 +85,7 @@ export class PositionManager {
     });
     order.position = position._id;
     await order.save();
-    await portfolioService.applyEntry(p.mode, order.averagePrice * order.filled, fees);
+    await portfolioService.applyEntry(p.mode, order.averagePrice * order.filled, fees, p.user ?? null);
 
     if (p.mode === 'LIVE') await this.placeProtectiveStop(position).catch((err) => logger.error({ err: errorMessage(err) }, 'Protective stop placement failed'));
     eventBus.publish('position', position.toJSON());
@@ -150,7 +150,8 @@ export class PositionManager {
     const exitPrice = order.averagePrice!;
     const exitFee = (order.fee ?? 0) * (amount / order.filled);
     const entryFeeShare = (position.fees ?? 0) * (amount / position.amount);
-    const gross = await portfolioService.applyExit(mode, position.direction as Direction, position.entryPrice, exitPrice, amount, exitFee);
+    const owner = position.user ? position.user.toString() : null;
+    const gross = await portfolioService.applyExit(mode, position.direction as Direction, position.entryPrice, exitPrice, amount, exitFee, owner);
     const slippage = (await Fill.find({ order: { $in: [position.entryOrder, order._id].filter(Boolean) as never } }).lean()).reduce((s, f) => s + (f.slippage ?? 0), 0);
     const net = gross - entryFeeShare - exitFee;
 
@@ -196,7 +197,7 @@ export class PositionManager {
       position.currentPrice = exitPrice;
     }
     await position.save();
-    await portfolioService.revalue(mode).catch(() => undefined);
+    await portfolioService.revalue(mode, owner).catch(() => undefined);
     eventBus.publish('position', position.toJSON());
     eventBus.publish('trade', trade.toJSON());
 
@@ -237,8 +238,9 @@ export class PositionManager {
     }
   }
 
-  async closeAll(mode: Mode, reason: string) {
-    const open = await PositionModel.find({ mode, status: 'OPEN' });
+  /** Emergency close-all acts on the system book; pass includeUsers to also flatten personal demo accounts. */
+  async closeAll(mode: Mode, reason: string, includeUsers = false) {
+    const open = await PositionModel.find({ mode, status: 'OPEN', ...(includeUsers ? {} : { user: null }) });
     const results = { closed: 0, failed: [] as string[] };
     for (const p of open) {
       try {

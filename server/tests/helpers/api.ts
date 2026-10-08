@@ -7,9 +7,9 @@ import { generateTotpSecret, totp } from '../../src/utils/totp';
 
 export const PASSWORD = 'CorrectHorse9Battery';
 
-export async function makeUser(app: Express, email: string, role: 'admin' | 'trader' | 'viewer', with2fa = false) {
+export async function makeUser(app: Express, email: string, role: 'admin' | 'trader' | 'viewer', with2fa = false, emailVerified = true) {
   const secret = generateTotpSecret();
-  await User.create({ email, name: email, passwordHash: await AuthService.hashPassword(PASSWORD), role, twoFactorEnabled: with2fa, twoFactorSecret: with2fa ? encrypt(secret) : undefined });
+  await User.create({ email, name: email, passwordHash: await AuthService.hashPassword(PASSWORD), role, passwordSet: true, emailVerified, twoFactorEnabled: with2fa, twoFactorSecret: with2fa ? encrypt(secret) : undefined });
   const login = await request(app).post('/api/auth/login').send({ email, password: PASSWORD });
   let token = login.body.accessToken as string;
   if (with2fa) {

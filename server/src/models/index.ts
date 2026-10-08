@@ -21,3 +21,4 @@ export * from './SystemEvent';
 export * from './Notification';
 export * from './AuditLog';
 export * from './Settings';
+export * from './EmailToken';

@@ -5,6 +5,7 @@ import { eventBus } from '../utils/eventBus';
 import { logger, errorMessage } from '../utils/logger';
 import { TIMEFRAME_MS, TIMEFRAMES, type Candle, type Timeframe } from '../types';
 import { BinanceWsStream } from './BinanceWsStream';
+import { SimulatedFeed } from './SimulatedFeed';
 import { CandleStore } from './CandleStore';
 import { marketDataCache } from './MarketDataCache';
 import { validateCandles } from './candleUtils';
@@ -37,6 +38,8 @@ export interface MarketSummary {
  */
 export class MarketDataService {
   private ws?: BinanceWsStream;
+  private sim?: SimulatedFeed;
+  readonly simulated = env.MARKET_DATA_SOURCE === 'simulated';
   private timers: NodeJS.Timeout[] = [];
   private running = false;
   readonly exchange: string;
@@ -59,6 +62,7 @@ export class MarketDataService {
   async start() {
     if (this.running) return;
     this.running = true;
+    if (this.simulated) return this.startSimulated();
     await this.ensureMarkets().catch((err) => logger.warn({ err: errorMessage(err) }, 'Market registration failed'));
     for (const s of this.symbols) for (const tf of this.timeframes) await this.backfill(s, tf).catch((err) => this.onRestError(err));
 
@@ -85,8 +89,39 @@ export class MarketDataService {
     void this.pollBooks();
   }
 
+  private async startSimulated() {
+    logger.warn('MARKET_DATA_SOURCE=simulated - SYNTHETIC prices for development only; LIVE trading is disabled');
+    await Exchange.updateOne({ name: this.exchange }, { $setOnInsert: { name: this.exchange, displayName: `${this.exchange} (simulated)` } }, { upsert: true }).catch(() => undefined);
+    for (const s of this.symbols) {
+      const [base, quote] = s.split('/');
+      await Market.updateOne({ exchange: this.exchange, symbol: s }, { $set: { base, quote, type: 'spot', active: true, minAmount: 0.00001, amountPrecision: 6, pricePrecision: 2, takerFee: 0.001, makerFee: 0.001 }, $setOnInsert: { enabled: true, timeframes: this.timeframes } }, { upsert: true }).catch(() => undefined);
+    }
+    this.sim = new SimulatedFeed(this.symbols, this.timeframes, {
+      onTicker: (t) => {
+        if (marketDataCache.setTicker(this.exchange, t)) eventBus.publish('price', { exchange: this.exchange, simulated: true, ...t });
+      },
+      onBook: (b) => marketDataCache.setOrderBook(this.exchange, b),
+      onClosedCandles: (symbol, tf, cs) => void this.ingestCandles(symbol, tf, cs, 'SYNTHETIC'),
+    });
+    const hist = this.sim.history(500);
+    for (const [sym, byTf] of hist) {
+      for (const [tf, cs] of byTf) marketDataCache.mergeCandles(this.exchange, sym, tf, cs);
+      const lastMinute = byTf.get(this.timeframes[0]);
+      if (lastMinute?.length) this.sim.setPrice(sym, lastMinute[lastMinute.length - 1].close);
+    }
+    this.wsConnected = true;
+    this.sim.start(1000);
+    this.timers.push(
+      setInterval(() => {
+        this.lastRestOkAt = Date.now();
+        this.checkHealth();
+      }, 5_000),
+    );
+  }
+
   stop() {
     this.running = false;
+    this.sim?.stop();
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
     this.ws?.stop();
@@ -137,7 +172,7 @@ export class MarketDataService {
   }
 
   /** Validate, de-duplicate, persist and publish closed candles. */
-  async ingestCandles(symbol: string, tf: Timeframe, candles: Candle[], source: 'REST' | 'WS') {
+  async ingestCandles(symbol: string, tf: Timeframe, candles: Candle[], source: 'REST' | 'WS' | 'SYNTHETIC') {
     const { valid, rejected, gaps } = validateCandles(candles, tf);
     for (const r of rejected) if (r.reason !== 'candle not closed yet') logger.warn({ symbol, tf, reason: r.reason, ts: r.candle.timestamp }, 'Rejected candle');
     if (!valid.length) return [];
@@ -158,7 +193,7 @@ export class MarketDataService {
     if (gaps.length || (prevTs && valid[0].timestamp - prevTs > step)) {
       const from = prevTs ? prevTs + step : gaps[0].from;
       logger.info({ symbol, tf, from }, 'Gap detected - backfilling');
-      if (source === 'WS') void this.fetchRange(symbol, tf, from).catch((err) => this.onRestError(err));
+      if (source === 'WS' && !this.simulated) void this.fetchRange(symbol, tf, from).catch((err) => this.onRestError(err));
     }
     return added;
   }
@@ -247,6 +282,9 @@ export class MarketDataService {
     const vol = candles.length > 30 ? lastValid(volatility(candles.map((c) => c.close), 20)) : undefined;
     const mid = (t.data.bid + t.data.ask) / 2;
     const extras = marketDataCache.getExtras(this.exchange, symbol);
+    const day = marketDataCache.getCandles(this.exchange, symbol, this.timeframes.includes('1h') ? '1h' : this.timeframes[this.timeframes.length - 1]).slice(-24);
+    const change24hPct = t.data.change24hPct ?? (day.length ? t.data.last / day[0].open - 1 : undefined);
+    const volume24h = t.data.quoteVolume ?? (day.length ? day.reduce((sum, c) => sum + c.volume * c.close, 0) : undefined);
     return {
       exchange: this.exchange,
       symbol,
@@ -254,8 +292,8 @@ export class MarketDataService {
       bid: t.data.bid,
       ask: t.data.ask,
       spreadPct: mid > 0 ? (t.data.ask - t.data.bid) / mid : NaN,
-      change24hPct: t.data.change24hPct,
-      volume24h: t.data.quoteVolume,
+      change24hPct,
+      volume24h,
       volatility: vol,
       dataAgeMs: marketDataCache.dataAgeMs(this.exchange, symbol),
       fundingRate: extras?.fundingRate,

@@ -12,6 +12,7 @@ import { BacktestRunModel } from '../src/models/BacktestRun';
 import { BacktestModel } from '../src/models/Backtest';
 import { generateTotpSecret, totp } from '../src/utils/totp';
 import { connectTestDb, clearDb, disconnectTestDb } from './helpers/db';
+import { reloadEnv } from '../src/config/env';
 import { makeUser, PASSWORD } from './helpers/api';
 
 const app = createApp();
@@ -28,13 +29,37 @@ beforeEach(async () => {
 const cookieFrom = (res: request.Response) => ([] as string[]).concat(res.headers['set-cookie'] ?? []).find((c) => c.startsWith('afx_rt='))!;
 
 describe('authentication', () => {
-  it('first registration bootstraps an admin; later public registration is closed', async () => {
+  it('first registration bootstraps an admin; later public sign-ups are traders', async () => {
     const r = await request(app).post('/api/auth/register').send({ email: 'boss@x.io', name: 'Boss', password: PASSWORD });
     expect(r.status).toBe(200);
     expect(r.body.user.role).toBe('admin');
     expect(r.body.user).not.toHaveProperty('passwordHash');
-    const r2 = await request(app).post('/api/auth/register').send({ email: 'eve@x.io', name: 'Eve', password: PASSWORD });
-    expect(r2.status).toBe(403);
+    const r2 = await request(app).post('/api/auth/register').send({ email: 'eve@x.io', name: 'Eve', password: PASSWORD, role: 'admin' });
+    expect(r2.status).toBe(200);
+    expect(r2.body.user.role).toBe('trader'); // role cannot be chosen by the client
+    expect((await request(app).post('/api/auth/register').send({ email: 'eve@x.io', name: 'Eve', password: PASSWORD })).status).toBe(409);
+  });
+
+  it('public sign-up can be disabled', async () => {
+    process.env.ALLOW_PUBLIC_SIGNUP = 'false';
+    reloadEnv();
+    try {
+      await request(app).post('/api/auth/register').send({ email: 'boss@x.io', name: 'Boss', password: PASSWORD });
+      expect((await request(app).post('/api/auth/register').send({ email: 'eve@x.io', name: 'Eve', password: PASSWORD })).status).toBe(403);
+    } finally {
+      delete process.env.ALLOW_PUBLIC_SIGNUP;
+      reloadEnv();
+    }
+  });
+
+  it('the admin portal only accepts admin accounts', async () => {
+    await makeUser(app, 't@x.io', 'trader');
+    await makeUser(app, 'a@x.io', 'admin');
+    const t = await request(app).post('/api/auth/login').send({ email: 't@x.io', password: PASSWORD, portal: 'admin' });
+    expect(t.status).toBe(401);
+    expect(t.body.error.message).toBe('Invalid email or password'); // does not reveal that the account exists
+    expect((await request(app).post('/api/auth/login').send({ email: 'a@x.io', password: PASSWORD, portal: 'admin' })).status).toBe(200);
+    expect((await request(app).post('/api/auth/login').send({ email: 't@x.io', password: PASSWORD })).status).toBe(200);
   });
 
   it('rejects weak passwords', async () => {
@@ -147,7 +172,7 @@ describe('API security', () => {
 
   it('validates input and rejects malformed JSON', async () => {
     const { auth } = await makeUser(app, 't@x.io', 'trader');
-    expect((await request(app).post('/api/orders').set(auth).send({ symbol: 'BTC/USDT; drop', side: 'buy', type: 'market', amount: -1 })).status).toBe(400);
+    expect((await request(app).post('/api/account/orders').set(auth).send({ symbol: 'BTC/USDT; drop', direction: 'LONG', investment: -1 })).status).toBe(400);
     expect((await request(app).post('/api/auth/login').set('content-type', 'application/json').send('{bad')).status).toBe(400);
   });
 
@@ -159,9 +184,20 @@ describe('API security', () => {
 });
 
 describe('RBAC', () => {
-  it('viewer can read but cannot trade or administer', async () => {
+  it('non-admins see their own account and market data, never system-book data', async () => {
     const { auth } = await makeUser(app, 'v@x.io', 'viewer');
-    expect((await request(app).get('/api/risk').set(auth)).status).toBe(200);
+    expect((await request(app).get('/api/account').set(auth)).status).toBe(200);
+    expect((await request(app).get('/api/market-data/summary').set(auth)).status).toBe(200);
+    for (const url of ['/api/risk', '/api/signals', '/api/orders', '/api/positions', '/api/trades', '/api/portfolio', '/api/ai/analyses', '/api/notifications', '/api/system/health', '/api/exchanges']) {
+      expect((await request(app).get(url).set(auth)).status, url).toBe(403);
+    }
+    const settings = await request(app).get('/api/settings').set(auth);
+    expect(settings.body).not.toHaveProperty('risk');
+    expect(settings.body).not.toHaveProperty('integrations');
+  });
+
+  it('viewer cannot trade or administer', async () => {
+    const { auth } = await makeUser(app, 'v@x.io', 'viewer');
     expect((await request(app).post('/api/orders').set(auth).send({ symbol: 'BTC/USDT', side: 'buy', type: 'market', amount: 1 })).status).toBe(403);
     expect((await request(app).get('/api/users').set(auth)).status).toBe(403);
     expect((await request(app).post('/api/system/emergency/stop-new-trades').set(auth).send({})).status).toBe(403);
@@ -237,9 +273,11 @@ describe('protected actions', () => {
     expect(tradingState.get().risk.maxRiskPerTrade).toBe(0.004);
   });
 
-  it('manual orders are paper-only', async () => {
+  it('manual system-book orders are admin-only and paper-only', async () => {
     tradingState.update({ mode: 'LIVE' });
-    const { auth } = await makeUser(app, 't@x.io', 'trader');
+    const t = await makeUser(app, 't@x.io', 'trader');
+    expect((await request(app).post('/api/orders').set(t.auth).send({ symbol: 'BTC/USDT', side: 'buy', type: 'market', amount: 1 })).status).toBe(403);
+    const { auth } = await makeUser(app, 'a@x.io', 'admin');
     const r = await request(app).post('/api/orders').set(auth).send({ symbol: 'BTC/USDT', side: 'buy', type: 'market', amount: 1 });
     expect(r.status).toBe(403);
     expect(r.body.error.code).toBe('PAPER_ONLY');

@@ -39,7 +39,7 @@ export const portfolioController = {
     for (const key of all) {
       const latest = async (segment: 'FULL' | 'OUT_OF_SAMPLE') => (await BacktestRunModel.findOne({ strategyKey: key, segment, status: 'COMPLETED' }).sort({ finishedAt: -1 }).select({ metrics: 1, finishedAt: 1, warnings: 1 }).lean()) ?? null;
       const mode = async (m: 'PAPER' | 'LIVE') => {
-        const ts = await TradeModel.find({ mode: m, strategyKey: key }).sort({ closedAt: 1 }).lean();
+        const ts = await TradeModel.find({ mode: m, strategyKey: key, user: null }).sort({ closedAt: 1 }).lean();
         if (!ts.length) return null;
         let eq = 10_000;
         const curve = [{ t: 0, equity: eq }, ...ts.map((t) => ({ t: new Date(t.closedAt ?? 0).getTime(), equity: (eq += t.netPnl ?? 0) }))];

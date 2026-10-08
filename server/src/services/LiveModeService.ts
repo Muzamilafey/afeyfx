@@ -36,8 +36,8 @@ export const LiveModeService = {
     if (s.emergencyShutdown) throw new AppError(409, 'Emergency shutdown is active', 'EMERGENCY_ACTIVE');
 
     await PortfolioModel.updateOne(
-      { mode: 'LIVE' },
-      { $setOnInsert: { mode: 'LIVE', startingBalance: lastPreflight.quoteBalance ?? 0, balance: lastPreflight.quoteBalance ?? 0, equity: lastPreflight.quoteBalance ?? 0, peakEquity: lastPreflight.quoteBalance ?? 0 }, $set: { lastExchangeBalance: lastPreflight.quoteBalance } },
+      { mode: 'LIVE', owner: null },
+      { $setOnInsert: { mode: 'LIVE', owner: null, startingBalance: lastPreflight.quoteBalance ?? 0, balance: lastPreflight.quoteBalance ?? 0, equity: lastPreflight.quoteBalance ?? 0, peakEquity: lastPreflight.quoteBalance ?? 0 }, $set: { lastExchangeBalance: lastPreflight.quoteBalance } },
       { upsert: true },
     );
     tradingState.update({ mode: 'LIVE', liveModeActive: true });

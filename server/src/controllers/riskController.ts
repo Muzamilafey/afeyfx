@@ -33,7 +33,7 @@ export const riskController = {
   async status(_req: Request, res: Response) {
     const s = tradingState.get();
     const p = portfolioService.view(await portfolioService.revalue(s.mode));
-    const open = await PositionModel.countDocuments({ mode: s.mode, status: 'OPEN' });
+    const open = await PositionModel.countDocuments({ mode: s.mode, status: 'OPEN', user: null });
     res.json({
       mode: s.mode,
       config: s.risk,

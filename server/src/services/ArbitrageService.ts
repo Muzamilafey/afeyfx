@@ -100,7 +100,7 @@ export class ArbitrageService {
       const net = gross - fees;
       await portfolioService.get(mode);
       // Pre-funded venues: cash moves by the realized spread less fees; inventory is unchanged net.
-      await PortfolioModel.updateOne({ mode }, { $inc: { balance: net, realizedPnl: net, fees } });
+      await PortfolioModel.updateOne({ mode, owner: null }, { $inc: { balance: net, realizedPnl: net, fees } });
       const trade = await TradeModel.create({
         mode,
         exchange: `${opp.buyExchange}->${opp.sellExchange}`,

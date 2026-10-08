@@ -1,4 +1,4 @@
-import { isLiveTradingEnabledByEnv } from '../config/env';
+import { env, isLiveTradingEnabledByEnv } from '../config/env';
 import { circuitBreaker } from '../risk/CircuitBreaker';
 import { tradingState } from '../services/TradingState';
 import { LiveTradingDisabledError } from '../utils/errors';
@@ -27,6 +27,7 @@ export function checkLiveOrder(intent: OrderIntent): GuardResult {
   const reasons: string[] = [];
   const s = tradingState.get();
   if (!isLiveTradingEnabledByEnv()) reasons.push('LIVE_TRADING_ENABLED is not true');
+  if (env.MARKET_DATA_SOURCE === 'simulated') reasons.push('Simulated market data is active');
   if (s.mode !== 'LIVE') reasons.push('Trading mode is not LIVE');
   if (!s.liveModeActive) reasons.push('Live mode has not been activated by an authorized user');
   if (intent === 'OPEN') {

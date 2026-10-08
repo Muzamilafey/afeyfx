@@ -12,10 +12,15 @@ export const settingsSchemas = {
 };
 
 export const settingsController = {
-  get(_req: Request, res: Response) {
+  get(req: Request, res: Response) {
     const s = tradingState.get();
+    if (req.user?.role !== 'admin') {
+      // Non-admins only need to know whether trading is halted; system configuration stays private.
+      return res.json({ mode: s.mode, tradingEnabled: s.tradingEnabled, emergencyShutdown: s.emergencyShutdown, simulatedMarketData: env.MARKET_DATA_SOURCE === 'simulated' });
+    }
     // Never includes secrets - only whether integrations are configured.
-    res.json({
+    return res.json({
+      simulatedMarketData: env.MARKET_DATA_SOURCE === 'simulated',
       ...s,
       liveTradingEnabledByEnv: isLiveTradingEnabledByEnv(),
       exchange: env.DEFAULT_EXCHANGE,

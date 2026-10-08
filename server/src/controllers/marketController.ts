@@ -41,7 +41,7 @@ export const marketController = {
 export const marketDataController = {
   summary(_req: Request, res: Response) {
     const md = getMarketDataService();
-    res.json({ exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, markets: md.symbols.map((s) => md.summary(s) ?? { symbol: s, unavailable: true }) });
+    res.json({ simulated: md.simulated, exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, markets: md.symbols.map((s) => md.summary(s) ?? { symbol: s, unavailable: true }) });
   },
 
   async candles(req: Request, res: Response) {

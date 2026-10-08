@@ -100,6 +100,34 @@ describe('LIVE orders cannot be sent when LIVE_TRADING_ENABLED=false', () => {
   });
 });
 
+describe('simulated market data', () => {
+  it('blocks every live order while the synthetic feed is active', () => {
+    process.env.LIVE_TRADING_ENABLED = 'true';
+    process.env.MARKET_DATA_SOURCE = 'simulated';
+    reloadEnv();
+    try {
+      armEverythingExceptEnv();
+      const r = checkLiveOrder('REDUCE');
+      expect(r.allowed).toBe(false);
+      expect(r.reasons.join()).toMatch(/Simulated market data/);
+    } finally {
+      delete process.env.MARKET_DATA_SOURCE;
+      reloadEnv();
+    }
+  });
+
+  it('refuses to start in production with the simulated feed', () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, { NODE_ENV: 'production', MARKET_DATA_SOURCE: 'simulated', JWT_SECRET: 'x'.repeat(40), JWT_REFRESH_SECRET: 'y'.repeat(40), ENCRYPTION_KEY: 'a'.repeat(64) });
+    try {
+      expect(() => reloadEnv()).toThrow(/not allowed in production/);
+    } finally {
+      process.env = saved;
+      reloadEnv();
+    }
+  });
+});
+
 describe('other live safeguards (env switch ON)', () => {
   beforeEach(() => {
     process.env.LIVE_TRADING_ENABLED = 'true';

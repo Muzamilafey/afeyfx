@@ -97,21 +97,26 @@ function downsample<T>(xs: T[], max: number): T[] {
 export const backtestController = {
   async create(req: Request, res: Response) {
     const b = req.body as z.infer<typeof backtestSchemas.create>;
+    // Backtests are CPU-heavy: at most 2 in flight per user.
+    const recent = await BacktestModel.find({ user: req.user!.id, createdAt: { $gte: new Date(Date.now() - 10 * 60_000) } }).select({ _id: 1 }).lean();
+    const done = await BacktestRunModel.distinct('backtest', { backtest: { $in: recent.map((r) => r._id) }, status: { $in: ['COMPLETED', 'FAILED'] }, segment: { $in: ['FULL', 'OUT_OF_SAMPLE'] } });
+    if (recent.length - done.length >= 2) throw new AppError(429, 'You already have 2 backtests running - wait for them to finish', 'TOO_MANY_BACKTESTS');
     const bt = await BacktestModel.create({ ...b, user: req.user!.id, exchange: env.DEFAULT_EXCHANGE });
     await audit(req, { action: 'BACKTEST_STARTED', resource: 'backtest', resourceId: bt._id.toString(), details: { strategy: b.strategyKey, symbol: b.symbol, type: b.type } });
     setImmediate(() => void execute(bt._id.toString()).catch((err) => logger.error({ err: errorMessage(err) }, 'Backtest crashed')));
     res.status(202).json({ backtest: bt });
   },
 
-  async list(_req: Request, res: Response) {
-    const bts = await BacktestModel.find().sort({ createdAt: -1 }).limit(100).lean();
+  async list(req: Request, res: Response) {
+    const q = req.user!.role === 'admin' ? {} : { user: req.user!.id };
+    const bts = await BacktestModel.find(q).sort({ createdAt: -1 }).limit(100).lean();
     const runs = await BacktestRunModel.find({ backtest: { $in: bts.map((b) => b._id) } }).select({ trades: 0, equityCurve: 0 }).lean();
     res.json({ backtests: bts.map((b) => ({ ...b, runs: runs.filter((r) => String(r.backtest) === String(b._id)) })) });
   },
 
   async get(req: Request, res: Response) {
     const bt = await BacktestModel.findById(req.params.id).lean();
-    if (!bt) throw new AppError(404, 'Backtest not found');
+    if (!bt || (req.user!.role !== 'admin' && String(bt.user) !== req.user!.id)) throw new AppError(404, 'Backtest not found');
     res.json({ backtest: bt, runs: await BacktestRunModel.find({ backtest: bt._id }).sort({ segment: 1, window: 1 }).lean() });
   },
 

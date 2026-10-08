@@ -24,10 +24,13 @@ async function main() {
   if (existing) {
     existing.role = 'admin';
     existing.passwordHash = await AuthService.hashPassword(password);
+    existing.passwordSet = true;
+    // The operator running this on the server vouches for the address.
+    existing.emailVerified = true;
     await existing.save();
     console.log(`Updated ${email} -> admin`);
   } else {
-    await User.create({ email, name, passwordHash: await AuthService.hashPassword(password), role: 'admin' });
+    await User.create({ email, name, passwordHash: await AuthService.hashPassword(password), passwordSet: true, role: 'admin', emailVerified: true, emailVerifiedAt: new Date() });
     console.log(`Created admin ${email}. Enable 2FA from Settings before using protected actions.`);
   }
   await disconnectDb();

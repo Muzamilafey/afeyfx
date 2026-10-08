@@ -35,7 +35,7 @@ export const aiController = {
     const t = marketDataCache.getTicker(env.DEFAULT_EXCHANGE, symbol)?.data;
     const regime = marketRegimeService.detect(candles);
     const indicators = technicalAnalysis.snapshot(candles, { indicators: ['ema', 'rsi', 'macd', 'bollinger', 'atr', 'adx', 'vwap', 'volume', 'volatility', 'momentum'], vwapSessionMs: 86_400_000 });
-    const open = await PositionModel.find({ status: 'OPEN', mode: tradingState.get().mode }).lean();
+    const open = await PositionModel.find({ status: 'OPEN', mode: tradingState.get().mode, user: null }).lean();
     const r = await getClaudeService().analyzeMarket({
       symbol,
       timeframe,
