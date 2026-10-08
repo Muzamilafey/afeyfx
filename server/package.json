@@ -1,0 +1,59 @@
+{
+  "name": "afeyfx-server",
+  "version": "1.0.0",
+  "description": "AI-assisted algorithmic trading platform - API and trading engine",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "create-admin": "tsx src/scripts/createAdmin.ts",
+    "import-candles": "tsx src/scripts/importCandles.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
+    "bcryptjs": "^3.0.3",
+    "ccxt": "^4.5.85",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.11.1",
+    "node-cron": "^4.6.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.4",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.6.4",
+    "@types/node-cron": "^3.0.11",
+    "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.1",
+    "@types/ws": "^8.18.2",
+    "mongodb-memory-server": "^11.3.0",
+    "pino-pretty": "^13.2.0",
+    "socket.io-client": "^4.8.4",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

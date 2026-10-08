@@ -1,0 +1,11 @@
+process.env.NODE_ENV = 'test';
+process.env.LIVE_TRADING_ENABLED = 'false';
+process.env.TRADING_MODE = 'PAPER';
+process.env.JWT_SECRET = 'test-jwt-secret-test-jwt-secret-1234567890';
+process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-test-refresh-secret-123';
+process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+process.env.MARKET_DATA_ENABLED = 'false';
+process.env.JOBS_ENABLED = 'false';
+process.env.AI_ENABLED = 'false';
+process.env.TELEGRAM_BOT_TOKEN = '';
+process.env.COOKIE_SECURE = 'false';
