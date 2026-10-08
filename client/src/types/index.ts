@@ -7,8 +7,29 @@ export interface User {
   name: string;
   role: Role;
   twoFactorEnabled: boolean;
+  emailOtpEnabled?: boolean;
+  emailVerified?: boolean;
+  passwordSet?: boolean;
+  googleId?: string;
+  githubId?: string;
+  avatarUrl?: string;
   lastLoginAt?: string;
   active: boolean;
+}
+
+export type SecondFactor = 'totp' | 'email';
+
+export interface AuthConfig {
+  googleEnabled: boolean;
+  googleRedirectEnabled: boolean;
+  githubEnabled: boolean;
+  signupEnabled: boolean;
+  emailEnabled: boolean;
+  requireEmailVerification: boolean;
+}
+
+export interface DemoAccount extends Portfolio {
+  type: 'DEMO';
 }
 
 export interface Candle {

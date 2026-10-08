@@ -1,36 +1,69 @@
 import { useEffect, useRef } from 'react';
-import { CandlestickSeries, HistogramSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { CandlestickSeries, HistogramSeries, LineStyle, createChart, type IChartApi, type IPriceLine, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { Candle } from '../types';
+import { cssVar, useTheme } from '../hooks/useTheme';
 
-/** Candlestick + volume chart (TradingView lightweight-charts). New closed candles are appended live. */
-export function CandleChart({ candles, height = 320 }: { candles: Candle[]; height?: number }) {
+export interface PriceMarker {
+  price: number;
+  color: string;
+  title: string;
+}
+
+/**
+ * Candlestick + volume chart (TradingView lightweight-charts), theme-aware.
+ * `live` is the forming candle built from streaming ticks; `lines` draws e.g. position entries.
+ */
+export function CandleChart({ candles, live, lines = [], height = 320, fill = false }: { candles: Candle[]; live?: Candle | null; lines?: PriceMarker[]; height?: number; fill?: boolean }) {
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const vol = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const priceLines = useRef<IPriceLine[]>([]);
+  const fitted = useRef(false);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (!el.current) return;
+    const text = cssVar('--color-slate-400', '#94a3b8');
+    const grid = theme === 'light' ? '#e2e8f0' : '#1a2438';
     const c = createChart(el.current, {
-      height,
-      layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
-      grid: { vertLines: { color: '#1e293b' }, horzLines: { color: '#1e293b' } },
-      timeScale: { timeVisible: true, borderColor: '#334155' },
-      rightPriceScale: { borderColor: '#334155' },
+      height: fill ? el.current.clientHeight || height : height,
+      layout: { background: { color: 'transparent' }, textColor: text, fontFamily: 'ui-sans-serif, system-ui' },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      timeScale: { timeVisible: true, borderColor: grid, rightOffset: 8 },
+      rightPriceScale: { borderColor: grid },
+      crosshair: { mode: 0 },
       autoSize: true,
     });
-    series.current = c.addSeries(CandlestickSeries, { upColor: '#22c55e', downColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444', borderVisible: false });
-    vol.current = c.addSeries(HistogramSeries, { priceScaleId: 'vol', color: '#334155', priceFormat: { type: 'volume' } });
-    c.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    series.current = c.addSeries(CandlestickSeries, { upColor: '#22c55e', downColor: '#ef4444', wickUpColor: '#22c55e', wickDownColor: '#ef4444', borderVisible: false, priceLineColor: '#0ea5e9', priceLineStyle: LineStyle.Dashed });
+    vol.current = c.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+    c.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     chart.current = c;
-    return () => c.remove();
-  }, [height]);
+    fitted.current = false;
+    priceLines.current = [];
+    return () => {
+      c.remove();
+      chart.current = null;
+    };
+  }, [height, theme, fill]);
 
   useEffect(() => {
-    const data = candles.map((k) => ({ time: Math.floor(k.timestamp / 1000) as UTCTimestamp, open: k.open, high: k.high, low: k.low, close: k.close }));
-    series.current?.setData(data);
-    vol.current?.setData(candles.map((k) => ({ time: Math.floor(k.timestamp / 1000) as UTCTimestamp, value: k.volume, color: k.close >= k.open ? '#14532d' : '#7f1d1d' })));
-  }, [candles]);
+    const t = (k: Candle) => Math.floor(k.timestamp / 1000) as UTCTimestamp;
+    const all = live && (!candles.length || live.timestamp > candles[candles.length - 1].timestamp) ? [...candles, live] : candles;
+    series.current?.setData(all.map((k) => ({ time: t(k), open: k.open, high: k.high, low: k.low, close: k.close })));
+    vol.current?.setData(all.map((k) => ({ time: t(k), value: k.volume, color: k.close >= k.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })));
+    if (!fitted.current && all.length) {
+      chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, all.length - 120), to: all.length + 6 });
+      fitted.current = true;
+    }
+  }, [candles, live, theme]);
 
-  return <div ref={el} className="w-full" style={{ height }} />;
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    for (const pl of priceLines.current) s.removePriceLine(pl);
+    priceLines.current = lines.map((l) => s.createPriceLine({ price: l.price, color: l.color, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: l.title }));
+  }, [lines, theme]);
+
+  return <div ref={el} className="h-full w-full" style={fill ? undefined : { height }} />;
 }

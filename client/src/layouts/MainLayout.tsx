@@ -28,7 +28,7 @@ function Shell() {
           </div>
           <nav className="flex flex-col gap-1">
             {[...NAV, ...(isAdmin(user) ? [{ to: '/admin', label: 'Admin' }] : [])].map((n) => (
-              <NavLink key={n.to} to={n.to} end={'end' in n} className={({ isActive }) => `rounded-md px-3 py-2 text-sm ${isActive ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}>
+              <NavLink key={n.to} to={n.to} end={'end' in n} className={({ isActive }) => `rounded-md px-3 py-2 text-sm ${isActive ? 'bg-slate-800 text-slate-50' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'}`}>
                 {n.label}
               </NavLink>
             ))}
@@ -54,7 +54,7 @@ function Shell() {
           </header>
           <nav className="flex gap-1 overflow-x-auto border-b border-slate-800 px-2 py-1 md:hidden">
             {[...NAV, ...(isAdmin(user) ? [{ to: '/admin', label: 'Admin' }] : [])].map((n) => (
-              <NavLink key={n.to} to={n.to} end={'end' in n} className={({ isActive }) => `whitespace-nowrap rounded px-2 py-1 text-xs ${isActive ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>
+              <NavLink key={n.to} to={n.to} end={'end' in n} className={({ isActive }) => `whitespace-nowrap rounded px-2 py-1 text-xs ${isActive ? 'bg-slate-800 text-slate-50' : 'text-slate-400'}`}>
                 {n.label}
               </NavLink>
             ))}

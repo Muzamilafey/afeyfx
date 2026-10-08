@@ -66,6 +66,7 @@ const schema = z.object({
   /** Public sign-up for trader accounts (email/password, Google, GitHub). New accounts get role "trader" and a demo account. */
   ALLOW_PUBLIC_SIGNUP: bool(true),
   GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
   GITHUB_CLIENT_ID: z.string().default(''),
   GITHUB_CLIENT_SECRET: z.string().default(''),
   /** Public base URL of the API (for OAuth callbacks). Defaults to APP_URL. */

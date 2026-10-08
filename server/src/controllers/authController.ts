@@ -12,7 +12,9 @@ import QRCode from 'qrcode';
 import crypto from 'crypto';
 import { appUrl, githubAuthService } from '../services/GitHubAuthService';
 
-const GH_STATE_COOKIE = 'afx_gh_state';
+const OAUTH_STATE_COOKIE = 'afx_oauth_state';
+type Provider = 'google' | 'github';
+const providerSvc = (p: Provider) => (p === 'google' ? { enabled: googleAuthService.redirectEnabled, authorizeUrl: (s: string) => googleAuthService.authorizeUrl(s), identify: (c: string) => googleAuthService.identify(c) } : { enabled: githubAuthService.enabled, authorizeUrl: (s: string) => githubAuthService.authorizeUrl(s), identify: (c: string) => githubAuthService.identify(c) });
 
 const REFRESH_COOKIE = 'afx_rt';
 const cookieOpts = () => ({
@@ -53,7 +55,7 @@ async function sendSession(req: Request, res: Response, user: SessionUser) {
 export const authController = {
   /** Public, non-sensitive auth configuration for the login screen. */
   config(_req: Request, res: Response) {
-    res.json({ githubEnabled: !!env.GITHUB_CLIENT_ID && !!env.GITHUB_CLIENT_SECRET, signupEnabled: env.ALLOW_PUBLIC_SIGNUP, googleClientId: env.GOOGLE_CLIENT_ID || null, googleEnabled: googleAuthService.enabled, emailEnabled: mailService.configured || env.NODE_ENV !== 'production', requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION });
+    res.json({ googleRedirectEnabled: googleAuthService.redirectEnabled, githubEnabled: githubAuthService.enabled, signupEnabled: env.ALLOW_PUBLIC_SIGNUP, googleClientId: env.GOOGLE_CLIENT_ID || null, googleEnabled: googleAuthService.enabled, emailEnabled: mailService.configured || env.NODE_ENV !== 'production', requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION });
   },
 
   async register(req: Request, res: Response) {
@@ -89,42 +91,48 @@ export const authController = {
     }
   },
 
-  /** Step 1 of "Continue with GitHub": CSRF state in an httpOnly cookie, then redirect to GitHub. */
-  githubStart(_req: Request, res: Response) {
-    if (!githubAuthService.enabled) return res.redirect(302, `${appUrl()}/login#error=GITHUB_DISABLED`);
-    const state = crypto.randomBytes(32).toString('base64url');
-    // SameSite=Lax so the cookie survives the top-level redirect back from github.com.
-    res.cookie(GH_STATE_COOKIE, state, { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: 'lax', path: '/api/auth/github', maxAge: 10 * 60_000 });
-    return res.redirect(302, githubAuthService.authorizeUrl(state));
+  /** Step 1 of "Continue with Google/GitHub": CSRF state in an httpOnly cookie, then redirect to the provider. */
+  oauthStart(provider: Provider) {
+    return (_req: Request, res: Response) => {
+      const svc = providerSvc(provider);
+      if (!svc.enabled) return res.redirect(302, `${appUrl()}/login#error=${provider.toUpperCase()}_DISABLED`);
+      const state = `${provider}.${crypto.randomBytes(32).toString('base64url')}`;
+      // SameSite=Lax so the cookie survives the top-level redirect back from the provider.
+      res.cookie(OAUTH_STATE_COOKIE, state, { httpOnly: true, secure: env.COOKIE_SECURE, sameSite: 'lax', path: '/api/auth', maxAge: 10 * 60_000 });
+      return res.redirect(302, svc.authorizeUrl(state));
+    };
   },
 
   /** Step 2: verify state, exchange the code server-side, then hand the session to the SPA (never via the URL). */
-  async githubCallback(req: Request, res: Response) {
-    const fail = (code: string) => res.redirect(302, `${appUrl()}/login#error=${encodeURIComponent(code)}`);
-    const expected = req.cookies?.[GH_STATE_COOKIE];
-    res.clearCookie(GH_STATE_COOKIE, { path: '/api/auth/github' });
-    const state = String(req.query.state ?? '');
-    const code = String(req.query.code ?? '');
-    if (!expected || !state || expected.length !== state.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(state))) {
-      await audit(req, { action: 'LOGIN_GITHUB_FAILED', success: false, details: { reason: 'state mismatch' } });
-      return fail('OAUTH_STATE');
-    }
-    if (!code || req.query.error) return fail('GITHUB_CANCELLED');
-    try {
-      const r = await AuthService.oauthLogin('github', await githubAuthService.identify(code));
-      await audit(req, { action: r.linked ? 'GITHUB_LINKED' : 'LOGIN_GITHUB_OK', resource: 'user', resourceId: r.user._id.toString(), details: { requires2fa: r.requires2fa, created: r.created } });
-      if (r.requires2fa) {
-        // URL fragments are never sent to servers or in Referer headers; the token is 5-minute, 2FA-only.
-        return res.redirect(302, `${appUrl()}/auth/callback#challenge=${encodeURIComponent(r.challengeToken)}&methods=${r.methods.join(',')}`);
+  oauthCallback(provider: Provider) {
+    return async (req: Request, res: Response) => {
+      const fail = (code: string) => res.redirect(302, `${appUrl()}/login#error=${encodeURIComponent(code)}`);
+      const label = provider === 'google' ? 'GOOGLE' : 'GITHUB';
+      const expected = req.cookies?.[OAUTH_STATE_COOKIE];
+      res.clearCookie(OAUTH_STATE_COOKIE, { path: '/api/auth' });
+      const state = String(req.query.state ?? '');
+      const code = String(req.query.code ?? '');
+      if (!expected || !state || !state.startsWith(`${provider}.`) || expected.length !== state.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(state))) {
+        await audit(req, { action: `LOGIN_${label}_FAILED`, success: false, details: { reason: 'state mismatch' } });
+        return fail('OAUTH_STATE');
       }
-      const { refreshToken } = await AuthService.issueTokens(r.user, meta(req));
-      res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts());
-      await User.updateOne({ _id: r.user._id }, { $set: { lastLoginAt: new Date() } });
-      return res.redirect(302, `${appUrl()}/auth/callback`);
-    } catch (err) {
-      await audit(req, { action: 'LOGIN_GITHUB_FAILED', success: false, details: { reason: (err as Error).message } });
-      return fail(err instanceof AppError ? err.code : 'GITHUB_FAILED');
-    }
+      if (!code || req.query.error) return fail(`${label}_CANCELLED`);
+      try {
+        const r = await AuthService.oauthLogin(provider, await providerSvc(provider).identify(code));
+        await audit(req, { action: r.linked ? `${label}_LINKED` : `LOGIN_${label}_OK`, resource: 'user', resourceId: r.user._id.toString(), details: { requires2fa: r.requires2fa, created: r.created } });
+        if (r.requires2fa) {
+          // URL fragments are never sent to servers or in Referer headers; the token is 5-minute, 2FA-only.
+          return res.redirect(302, `${appUrl()}/auth/callback#challenge=${encodeURIComponent(r.challengeToken)}&methods=${r.methods.join(',')}`);
+        }
+        const { refreshToken } = await AuthService.issueTokens(r.user, meta(req));
+        res.cookie(REFRESH_COOKIE, refreshToken, cookieOpts());
+        await User.updateOne({ _id: r.user._id }, { $set: { lastLoginAt: new Date() } });
+        return res.redirect(302, `${appUrl()}/auth/callback${r.created ? '?welcome=1' : ''}`);
+      } catch (err) {
+        await audit(req, { action: `LOGIN_${label}_FAILED`, success: false, details: { reason: (err as Error).message } });
+        return fail(err instanceof AppError ? err.code : `${label}_FAILED`);
+      }
+    };
   },
 
   async sendLoginCode(req: Request, res: Response) {

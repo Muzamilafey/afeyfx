@@ -44,3 +44,46 @@
     @apply border-b border-slate-800/60 px-2 py-2 font-mono text-xs;
   }
 }
+
+/*
+ * Light theme. The UI is built on Tailwind's slate scale (plus accent colours), so the light theme
+ * remaps those palette variables instead of duplicating every class: the slate scale is inverted
+ * and pale accent text/background shades are swapped for darker / lighter equivalents.
+ * Solid accent fills used for buttons and banners (e.g. sky-600, red-600) are unchanged.
+ */
+html.light {
+  color-scheme: light;
+  --color-slate-50: #020617;
+  --color-slate-100: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #94a3b8;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #f1f5f9;
+
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+  --color-red-900: #fecaca;
+  --color-red-950: #fef2f2;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #fffbeb;
+  --color-sky-200: #075985;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-sky-900: #bae6fd;
+  --color-sky-950: #f0f9ff;
+  --color-violet-300: #6d28d9;
+}
+html.dark {
+  color-scheme: dark;
+}

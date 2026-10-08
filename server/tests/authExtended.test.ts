@@ -237,7 +237,7 @@ describe('Continue with Google', () => {
 
   it('public auth config exposes no secrets', async () => {
     const r = await request(app).get('/api/auth/config');
-    expect(Object.keys(r.body).sort()).toEqual(['emailEnabled', 'githubEnabled', 'googleClientId', 'googleEnabled', 'requireEmailVerification', 'signupEnabled']);
+    expect(Object.keys(r.body).sort()).toEqual(['emailEnabled', 'githubEnabled', 'googleClientId', 'googleEnabled', 'googleRedirectEnabled', 'requireEmailVerification', 'signupEnabled']);
   });
 });
 
@@ -270,7 +270,7 @@ describe('Continue with GitHub', () => {
     const loc = new URL(r.headers.location);
     expect(loc.host).toBe('github.com');
     expect(loc.searchParams.get('scope')).toBe('read:user user:email');
-    const cookie = ([] as string[]).concat(r.headers['set-cookie']).find((c) => c.startsWith('afx_gh_state='))!;
+    const cookie = ([] as string[]).concat(r.headers['set-cookie']).find((c) => c.startsWith('afx_oauth_state='))!;
     expect(cookie).toMatch(/HttpOnly/);
     return { state: loc.searchParams.get('state')!, cookie };
   };
@@ -286,7 +286,7 @@ describe('Continue with GitHub', () => {
     const { state, cookie } = await start();
     const r = await request(app).get(`/api/auth/github/callback?code=abc&state=${state}`).set('Cookie', cookie);
     expect(r.status).toBe(302);
-    expect(r.headers.location).toMatch(/\/auth\/callback$/);
+    expect(r.headers.location).toMatch(/\/auth\/callback\?welcome=1$/);
     expect(r.headers.location).not.toMatch(/token/i);
     const rt = ([] as string[]).concat(r.headers['set-cookie']).find((c) => c.startsWith('afx_rt='))!;
     const session = await request(app).post('/api/auth/refresh').set('Cookie', rt);
@@ -310,6 +310,42 @@ describe('Continue with GitHub', () => {
     expect(loc.search).toBe('');
     expect(loc.hash).toMatch(/^#challenge=.+&methods=totp$/);
     expect(([] as string[]).concat(r.headers['set-cookie'] ?? []).some((c) => c.startsWith('afx_rt='))).toBe(false);
+  });
+});
+
+describe('Continue with Google (redirect flow)', () => {
+  beforeEach(() => {
+    process.env.GOOGLE_CLIENT_ID = 'google-client.apps.googleusercontent.com';
+    process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+    reloadEnv();
+    googleAuthService.setFetch((async (url: string, init: RequestInit) => {
+      expect(url).toBe('https://oauth2.googleapis.com/token');
+      expect(String(init.body)).toContain('grant_type=authorization_code');
+      return new Response(JSON.stringify({ id_token: 'valid-google-id-token-xxxxxxxx' }), { status: 200 });
+    }) as unknown as typeof fetch);
+    googleAuthService.setVerifier(async (cred) => {
+      if (cred !== 'valid-google-id-token-xxxxxxxx') throw new AppError(401, 'bad', 'GOOGLE_INVALID');
+      return { sub: 'g-1', email: 'gg@x.io', emailVerified: true, name: 'GG' };
+    });
+  });
+  afterAll(() => {
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_SECRET;
+    reloadEnv();
+  });
+
+  it('start -> callback signs in, and a GitHub state cannot be replayed on the Google callback', async () => {
+    const s = await request(app).get('/api/auth/google/start');
+    const loc = new URL(s.headers.location);
+    expect(loc.host).toBe('accounts.google.com');
+    expect(loc.searchParams.get('scope')).toBe('openid email profile');
+    const state = loc.searchParams.get('state')!;
+    const cookie = ([] as string[]).concat(s.headers['set-cookie']).find((c) => c.startsWith('afx_oauth_state='))!;
+    const ok = await request(app).get(`/api/auth/google/callback?code=c&state=${encodeURIComponent(state)}`).set('Cookie', cookie);
+    expect(ok.headers.location).toMatch(/\/auth\/callback(\?welcome=1)?$/);
+    expect(await User.countDocuments({ googleId: 'g-1' })).toBe(1);
+    const forged = await request(app).get(`/api/auth/github/callback?code=c&state=${encodeURIComponent(state)}`).set('Cookie', cookie);
+    expect(forged.headers.location).toMatch(/OAUTH_STATE/);
   });
 });
 

@@ -57,7 +57,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
       <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
-          <button className="text-slate-400 hover:text-white" onClick={onClose} aria-label="Close">
+          <button className="text-slate-400 hover:text-slate-50" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
@@ -71,7 +71,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: readon
   return (
     <div className="mb-3 flex gap-1 border-b border-slate-800">
       {tabs.map((t) => (
-        <button key={t} onClick={() => onChange(t)} className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${value === t ? 'border-sky-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>
+        <button key={t} onClick={() => onChange(t)} className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${value === t ? 'border-sky-500 text-slate-50' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>
           {t}
         </button>
       ))}

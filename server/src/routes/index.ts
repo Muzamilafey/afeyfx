@@ -32,8 +32,10 @@ export function buildApiRouter() {
   auth.get('/config', h(authController.config));
   auth.post('/register', authLimiter, v(authSchemas.register), h(authController.register));
   auth.post('/google', authLimiter, v(authSchemas.google), h(authController.google));
-  auth.get('/github/start', authLimiter, h(authController.githubStart));
-  auth.get('/github/callback', authLimiter, h(authController.githubCallback));
+  for (const provider of ['google', 'github'] as const) {
+    auth.get(`/${provider}/start`, authLimiter, h(authController.oauthStart(provider)));
+    auth.get(`/${provider}/callback`, authLimiter, h(authController.oauthCallback(provider)));
+  }
   auth.post('/2fa/email/send-login', authLimiter, v(authSchemas.challenge), h(authController.sendLoginCode));
   auth.post('/verify-email', authLimiter, v(authSchemas.verifyEmail), h(authController.verifyEmail));
   auth.post('/login', authLimiter, v(authSchemas.login), h(authController.login));
