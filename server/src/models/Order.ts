@@ -6,7 +6,7 @@ import { Schema, model } from 'mongoose';
  */
 const orderSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     idempotencyKey: { type: String, required: true, unique: true },
     exchange: { type: String, required: true },

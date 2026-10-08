@@ -15,6 +15,7 @@ export type BusEvent =
   | 'risk'
   | 'exchange-status'
   | 'ai-analysis'
+  | 'payment'
   | 'system';
 
 class Bus extends EventEmitter {

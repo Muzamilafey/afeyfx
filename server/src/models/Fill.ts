@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const fillSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
     order: { type: Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
     exchange: String,
     exchangeTradeId: { type: String },

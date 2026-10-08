@@ -2,8 +2,14 @@ import { Schema, model } from 'mongoose';
 
 const portfolioSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true },
-    /** null = the system (strategy) book; a user id = that user's personal demo account. */
+    /**
+     * PAPER = simulated money (system paper book, or a trader's DEMO account).
+     * LIVE  = the system strategy book trading on a real exchange.
+     * REAL  = a trader's real-money account, funded by M-Pesa deposits. Orders fill internally at
+     *         the real market price (never sent to an exchange); always owned by a user.
+     */
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true },
+    /** null = the system (strategy) book; a user id = that user's personal account. */
     owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     baseCurrency: { type: String, default: 'USDT' },
     startingBalance: { type: Number, default: 0 },

@@ -11,7 +11,7 @@ import { errorMessage, logger } from '../utils/logger';
 import { orderExecutionService, type OrderExecutionService, type OrderPurpose } from './OrderExecutionService';
 import { notificationService } from '../notifications/NotificationService';
 
-type Mode = 'PAPER' | 'LIVE';
+type Mode = 'PAPER' | 'LIVE' | 'REAL';
 type OrderDoc = InstanceType<typeof OrderModel>;
 
 export interface OpenParams {

@@ -11,6 +11,8 @@ import { buildApiRouter } from './routes';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import { tradingState } from './services/TradingState';
 
+export const redactCallbackToken = (url: string) => url.replace(/(\/payments\/mpesa\/(?:stk|b2c\/result|b2c\/timeout)\/)[^/?#]+/, '$1[REDACTED]');
+
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
@@ -27,7 +29,15 @@ export function createApp() {
   app.use(cors({ origin: (o, cb) => cb(null, !o || origins.includes(o)), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
-  if (env.NODE_ENV !== 'test') app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/health' } }));
+  if (env.NODE_ENV !== 'test')
+    app.use(
+      pinoHttp({
+        logger,
+        autoLogging: { ignore: (req) => req.url === '/health' },
+        // The M-Pesa callback URLs carry a secret path token: never write it to the logs.
+        serializers: { req: (r: { id?: unknown; method?: string; url?: string }) => ({ id: r.id, method: r.method, url: redactCallbackToken(String(r.url ?? '')) }) },
+      }),
+    );
 
   /** Minimal unauthenticated liveness endpoint (no internal details). */
   app.get('/health', (_req, res) => {

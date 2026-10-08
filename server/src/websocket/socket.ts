@@ -12,6 +12,11 @@ const OWNED_EVENTS = new Set<BusEvent>(['order', 'trade', 'position', 'portfolio
 
 export function route(ev: BusEvent, payload: unknown): string | string[] {
   if (PUBLIC_EVENTS.has(ev)) return 'dashboard';
+  // Payments go to their owner and to admins (who review payouts).
+  if (ev === 'payment') {
+    const u = (payload as { user?: unknown } | null)?.user;
+    return u ? [`user:${String(u)}`, 'admins'] : 'admins';
+  }
   if (OWNED_EVENTS.has(ev)) {
     const p = (payload ?? {}) as { user?: unknown; owner?: unknown };
     const owner = p.user ?? p.owner;
@@ -22,7 +27,7 @@ export function route(ev: BusEvent, payload: unknown): string | string[] {
 }
 
 /** Events streamed to authenticated dashboard clients. */
-const STREAMED: BusEvent[] = ['price', 'candle', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'system'];
+const STREAMED: BusEvent[] = ['price', 'candle', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'payment', 'system'];
 
 /**
  * Socket.IO server. Connections must present a valid access token (auth.token). Price updates

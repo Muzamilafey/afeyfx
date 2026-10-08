@@ -199,6 +199,19 @@ export const AuthService = {
     return this.verifyUserTotp(userId, String(input.totp ?? ''));
   },
 
+  /**
+   * Confirmation for money leaving an account (withdrawals). Users with a second factor use it
+   * (authenticator, or email codes if enabled). Users without one must enter a single-use code
+   * sent to their verified email, so a stolen session alone can never withdraw.
+   */
+  async verifyMoneyMovement(userId: string, input: { totp?: unknown; emailCode?: unknown }) {
+    const u = await User.findById(userId);
+    if (!u) return false;
+    if (hasSecondFactor(u)) return this.verifySecondFactor(userId, input);
+    if (!u.emailVerified || input.emailCode === undefined || input.emailCode === '') return false;
+    return EmailTokenService.verifyCode(userId, 'ACTION_2FA', String(input.emailCode));
+  },
+
   async sendActionEmailCode(userId: string, context = '') {
     // Codes only go to a verified address; they are accepted only where email 2FA applies
     // (protected actions when email 2FA is enabled, or to prove inbox access when enabling it).

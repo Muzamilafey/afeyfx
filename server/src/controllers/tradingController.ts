@@ -13,7 +13,7 @@ import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 import { env } from '../config/env';
 
-const modeOf = (q: unknown) => (q === 'LIVE' ? 'LIVE' : q === 'PAPER' ? 'PAPER' : tradingState.get().mode);
+const modeOf = (q: unknown) => (q === 'LIVE' ? 'LIVE' : q === 'PAPER' ? 'PAPER' : q === 'REAL' ? 'REAL' : tradingState.get().mode);
 /** System book by default; admins may pass owner=all or owner=<userId> to inspect personal demo accounts. */
 const ownerQ = (req: Request): Record<string, unknown> => {
   const o = String(req.query.owner ?? '');

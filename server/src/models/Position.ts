@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const positionSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     exchange: { type: String, required: true },
     symbol: { type: String, required: true, index: true },

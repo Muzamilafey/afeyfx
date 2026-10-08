@@ -6,7 +6,7 @@ import { Schema, model } from 'mongoose';
  */
 const tradeSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     exchange: String,
     symbol: { type: String, required: true, index: true },

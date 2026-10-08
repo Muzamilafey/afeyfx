@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler as h } from '../utils/errors';
 import { requireAuth, requireFreshSecondFactor, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { validateBody as v } from '../middleware/validate';
-import { authLimiter, demoOrderLimiter, protectedActionLimiter, sessionLimiter } from '../middleware/rateLimit';
+import { authLimiter, callbackLimiter, demoOrderLimiter, paymentLimiter, protectedActionLimiter, sessionLimiter } from '../middleware/rateLimit';
 import { authController, schemas as authSchemas } from '../controllers/authController';
 import { userController, userSchemas } from '../controllers/userController';
 import { exchangeController, exchangeSchemas } from '../controllers/exchangeController';
@@ -16,6 +16,7 @@ import { riskController, riskSchemas } from '../controllers/riskController';
 import { notificationController, settingsController, settingsSchemas } from '../controllers/settingsController';
 import { systemController, systemSchemas } from '../controllers/systemController';
 import { accountController, accountSchemas } from '../controllers/accountController';
+import { adminPaymentController, mpesaCallbackController, paymentController, paymentSchemas } from '../controllers/paymentController';
 
 /** Read access to system-wide data (strategy book, risk, logs) is admin-only. */
 const adminRead = [requireRole('admin')];
@@ -53,8 +54,39 @@ export function buildApiRouter() {
   auth.post('/password', authLimiter, requireAuth, v(authSchemas.password), h(authController.setPassword));
   api.use('/auth', auth);
 
+  // ---- M-Pesa (Daraja) callbacks: public, authenticated by a secret path token (+ optional IP allow-list) ----
+  const mpesa = Router();
+  mpesa.post('/stk/:token', h(mpesaCallbackController.stk));
+  mpesa.post('/b2c/result/:token', h(mpesaCallbackController.b2cResult));
+  mpesa.post('/b2c/timeout/:token', h(mpesaCallbackController.b2cTimeout));
+  api.use('/payments/mpesa', callbackLimiter, mpesa);
+
   // ---- everything below requires authentication ----
   api.use(requireAuth);
+
+  // ---- real-money payments (M-Pesa): a trader's own deposits and withdrawals ----
+  const payments = Router();
+  payments.get('/config', h(paymentController.config));
+  payments.get('/', h(paymentController.list));
+  payments.get('/:id', h(paymentController.get));
+  payments.post('/deposits', ...trader, paymentLimiter, v(paymentSchemas.deposit), h(paymentController.deposit));
+  payments.post('/payouts', protectedActionLimiter, ...trader, v(paymentSchemas.payout), h(paymentController.payout));
+  payments.post('/payouts/:id/cancel', ...trader, h(paymentController.cancel));
+  api.use('/payments', payments);
+
+  // ---- admin payments console ----
+  const adminPayments = Router();
+  adminPayments.use(...admin);
+  adminPayments.get('/config', h(adminPaymentController.getConfig));
+  adminPayments.put('/config', ...protectedAdmin, v(paymentSchemas.config), h(adminPaymentController.updateConfig));
+  adminPayments.post('/config/test', h(adminPaymentController.test));
+  adminPayments.get('/stats', h(adminPaymentController.stats));
+  adminPayments.get('/', h(adminPaymentController.list));
+  adminPayments.post('/:id/approve', ...protectedAdmin, h(adminPaymentController.approve));
+  adminPayments.post('/:id/reject', ...protectedAdmin, v(paymentSchemas.reject), h(adminPaymentController.reject));
+  adminPayments.post('/:id/resolve', ...protectedAdmin, v(paymentSchemas.resolve), h(adminPaymentController.resolve));
+  adminPayments.post('/:id/requery', h(adminPaymentController.requery));
+  api.use('/admin/payments', adminPayments);
 
   // ---- personal demo account (any signed-in user; trading needs a verified email) ----
   const account = Router();

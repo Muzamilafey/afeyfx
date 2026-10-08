@@ -8,7 +8,7 @@ import { eventBus } from '../utils/eventBus';
 import { computeMetrics, type PerformanceMetrics } from './metrics';
 import type { Direction } from '../types';
 
-type Mode = 'PAPER' | 'LIVE';
+export type Mode = 'PAPER' | 'LIVE' | 'REAL';
 /** Account owner: null = system strategy book; otherwise a user id (personal demo account). */
 export type Owner = string | null;
 const ownerQ = (owner: Owner) => (owner ? owner : null);
@@ -28,7 +28,8 @@ export class PortfolioService {
   async get(mode: Mode, owner: Owner = null) {
     let p = await PortfolioModel.findOne({ mode, owner: ownerQ(owner) });
     if (!p) {
-      if (mode === 'LIVE' && owner) throw new Error('Personal accounts are demo (PAPER) only');
+      if (mode === 'LIVE' && owner) throw new Error('Personal accounts are DEMO (PAPER) or REAL, never LIVE');
+      if (mode === 'REAL' && !owner) throw new Error('REAL accounts always belong to a user');
       const start = mode === 'PAPER' ? env.PAPER_STARTING_BALANCE : 0;
       p = await PortfolioModel.findOneAndUpdate(
         { mode, owner: ownerQ(owner) },
@@ -121,6 +122,22 @@ export class PortfolioService {
     const credit = direction === 'LONG' ? exitPrice * amount - fee : entryPrice * amount + gross - fee;
     await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: credit, fees: fee, realizedPnl: gross - fee } });
     return gross;
+  }
+
+  /**
+   * Apply a cash flow (deposit credit, payout hold or refund) to a REAL account. The P&L anchors
+   * (starting balance, peak, day/week start) move by the same amount, so money moving in or out
+   * is never reported as trading profit or loss.
+   * With `requireFunds`, the debit only happens if the cash balance covers it (atomic).
+   */
+  async applyCashFlow(owner: string, amount: number, requireFunds = false) {
+    await this.get('REAL', owner);
+    const filter: Record<string, unknown> = { mode: 'REAL', owner };
+    if (requireFunds && amount < 0) filter.balance = { $gte: -amount - 1e-9 };
+    const r = await PortfolioModel.updateOne(filter, { $inc: { balance: amount, startingBalance: amount, peakEquity: amount, dayStartEquity: amount, weekStartEquity: amount } });
+    if (r.modifiedCount !== 1) return false;
+    await this.revalue('REAL', owner).catch(() => undefined);
+    return true;
   }
 
   async snapshot(mode: Mode, owner: Owner = null) {

@@ -13,6 +13,7 @@ import { OrderModel } from '../models/Order';
 import { SystemEventModel } from '../models/SystemEvent';
 import { notificationService } from '../notifications/NotificationService';
 import { arbitrageService } from '../services/ArbitrageService';
+import { paymentService } from '../payments/PaymentService';
 import { logger, errorMessage } from '../utils/logger';
 
 type Task = ReturnType<typeof cron.schedule>;
@@ -47,7 +48,14 @@ export class JobScheduler {
     // Strategy scanning shortly after each minute boundary (candles close on the minute).
     this.job('strategy-scan', '5 * * * * *', () => tradingEngine.scanAll());
     // Position monitor: stop-loss / take-profit / trailing stops.
-    this.job('position-monitor', '*/2 * * * * *', () => positionManager.monitor(tradingState.get().mode));
+    // PAPER (system paper book + demo accounts) and REAL (client accounts) are always monitored.
+    this.job('position-monitor', '*/2 * * * * *', async () => {
+      await positionManager.monitor('PAPER');
+      await positionManager.monitor('REAL');
+      if (tradingState.get().mode === 'LIVE') await positionManager.monitor('LIVE');
+    });
+    // M-Pesa: re-query deposits whose callback never arrived; expire stale requests.
+    this.job('payments-reconcile', '20 * * * * *', () => paymentService.reconcilePending());
     // Risk checks: drawdown limits and clock sync.
     this.job('risk-checks', '*/15 * * * * *', () => this.riskChecks());
     // Portfolio snapshots.

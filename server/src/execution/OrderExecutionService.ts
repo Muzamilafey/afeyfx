@@ -18,7 +18,8 @@ import { PaperBroker } from './PaperBroker';
 export type OrderPurpose = 'ENTRY' | 'EXIT' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'MANUAL' | 'EMERGENCY';
 
 export interface OrderIntent {
-  mode: 'PAPER' | 'LIVE';
+  /** PAPER and REAL (client real-money accounts) fill internally at market prices; only LIVE reaches an exchange. */
+  mode: 'PAPER' | 'LIVE' | 'REAL';
   exchange: string;
   symbol: string;
   side: Side;
@@ -79,11 +80,18 @@ const isNetworkError = (err: unknown) => err instanceof ccxt.NetworkError;
  */
 export class OrderExecutionService {
   paperBroker: PaperBroker;
+  /**
+   * Internal fills for traders' REAL accounts: same book-walking price model as paper (real spread
+   * and depth from the live order book) but no simulated random rejections or artificial latency.
+   */
+  clientBroker: PaperBroker;
 
   constructor(
     public cfg: ExecutionConfig = DEFAULT_EXEC,
     paperBroker?: PaperBroker,
   ) {
+    const snapshot = (exchange: string, symbol: string) => ({ book: marketDataCache.getOrderBook(exchange, symbol)?.data ?? null, ticker: marketDataCache.getTicker(exchange, symbol)?.data ?? null });
+    this.clientBroker = new PaperBroker({ feeRate: env.PAPER_FEE_RATE, slippagePct: 0, latencyMs: 0, latencyJitter: 0, rejectRate: 0, maxBookAgeMs: 15_000 }, snapshot);
     this.paperBroker =
       paperBroker ??
       new PaperBroker(
@@ -137,19 +145,20 @@ export class OrderExecutionService {
       reduceOnly: intent.reduceOnly,
     };
 
-    if (intent.mode === 'PAPER') await this.executePaper(order, req);
+    if (intent.mode === 'PAPER') await this.executePaper(order, req, this.paperBroker);
+    else if (intent.mode === 'REAL') await this.executePaper(order, req, this.clientBroker);
     else await this.executeLive(order, req);
 
     eventBus.publish('order', order.toJSON());
     return order;
   }
 
-  private async executePaper(order: InstanceType<typeof OrderModel>, req: OrderRequest) {
+  private async executePaper(order: InstanceType<typeof OrderModel>, req: OrderRequest, broker: PaperBroker) {
     order.status = 'SUBMITTED';
     order.submittedAt = new Date();
     order.attempts = 1;
-    const r = await this.paperBroker.execute(req, order.exchange);
-    order.exchangeOrderId = `paper-${order._id.toString()}`;
+    const r = await broker.execute(req, order.exchange);
+    order.exchangeOrderId = `${order.mode === 'REAL' ? 'client' : 'paper'}-${order._id.toString()}`;
     order.exchangeResponses.push({ simulated: true, status: r.status, latencyMs: r.latencyMs, rejectReason: r.rejectReason });
     order.status = r.status;
     order.filled = r.filled;
@@ -161,7 +170,7 @@ export class OrderExecutionService {
     await order.save();
     let i = 0;
     for (const f of r.fills) {
-      await Fill.create({ mode: 'PAPER', order: order._id, exchange: order.exchange, exchangeTradeId: `${order.exchangeOrderId}-${i++}`, symbol: order.symbol, side: order.side, price: f.price, amount: f.amount, fee: f.fee, slippage: f.slippage, timestamp: new Date() });
+      await Fill.create({ mode: order.mode, order: order._id, exchange: order.exchange, exchangeTradeId: `${order.exchangeOrderId}-${i++}`, symbol: order.symbol, side: order.side, price: f.price, amount: f.amount, fee: f.fee, slippage: f.slippage, timestamp: new Date() });
     }
   }
 
@@ -287,7 +296,7 @@ export class OrderExecutionService {
     const order = await OrderModel.findById(orderId);
     if (!order) throw new Error('Order not found');
     if (TERMINAL.includes(order.status as OrderStatus)) return order;
-    if (order.mode === 'PAPER') {
+    if (order.mode !== 'LIVE') {
       order.status = 'CANCELLED';
       order.closedAt = new Date();
     } else if (order.exchangeOrderId) {

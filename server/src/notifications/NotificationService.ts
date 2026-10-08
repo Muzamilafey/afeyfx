@@ -18,6 +18,8 @@ export type NotificationType =
   | 'LIVE_MODE_DISABLED'
   | 'CIRCUIT_BREAKER'
   | 'RECONCILIATION'
+  | 'PAYMENT'
+  | 'PAYMENT_ATTENTION'
   | 'SYSTEM';
 
 const SEVERITY: Partial<Record<NotificationType, 'INFO' | 'WARNING' | 'CRITICAL'>> = {
@@ -30,6 +32,7 @@ const SEVERITY: Partial<Record<NotificationType, 'INFO' | 'WARNING' | 'CRITICAL'
   LIVE_MODE_ENABLED: 'CRITICAL',
   CIRCUIT_BREAKER: 'CRITICAL',
   RECONCILIATION: 'CRITICAL',
+  PAYMENT_ATTENTION: 'WARNING',
 };
 
 const ICON: Record<string, string> = { INFO: 'ℹ️', WARNING: '⚠️', CRITICAL: '🚨' };

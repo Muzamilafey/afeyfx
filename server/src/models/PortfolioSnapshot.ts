@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const portfolioSnapshotSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE'], required: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, index: true },
     owner: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     timestamp: { type: Date, required: true, index: true },
     balance: Number,
