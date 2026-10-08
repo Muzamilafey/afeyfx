@@ -12,7 +12,8 @@ import { z } from 'zod';
 
 const bool = (def: boolean) =>
   z
-    .union([z.string(), z.boolean(), z.undefined()])
+    .union([z.string(), z.boolean()])
+    .optional()
     .transform((v) => {
       if (v === undefined || v === '') return def;
       if (typeof v === 'boolean') return v;
@@ -21,7 +22,8 @@ const bool = (def: boolean) =>
 
 const num = (def: number) =>
   z
-    .union([z.string(), z.number(), z.undefined()])
+    .union([z.string(), z.number()])
+    .optional()
     .transform((v, ctx) => {
       if (v === undefined || v === '') return def;
       const n = typeof v === 'number' ? v : Number(v);

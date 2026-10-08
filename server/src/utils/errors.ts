@@ -41,7 +41,9 @@ export class WithdrawalForbiddenError extends Error {
 }
 
 export const asyncHandler =
-  (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>): RequestHandler =>
+  (fn: (req: Request, res: Response, next: NextFunction) => unknown): RequestHandler =>
   (req, res, next) => {
-    fn(req, res, next).catch(next);
+    Promise.resolve()
+      .then(() => fn(req, res, next))
+      .catch(next);
   };

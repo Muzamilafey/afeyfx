@@ -25,7 +25,10 @@ const positionSchema = new Schema(
     aiAnalysis: { type: Schema.Types.ObjectId, ref: 'AIAnalysis' },
     entryOrder: { type: Schema.Types.ObjectId, ref: 'Order' },
     exitOrder: { type: Schema.Types.ObjectId, ref: 'Order' },
+    /** Exchange-side protective stop (LIVE) so the position is protected even if the engine is down. */
+    protectiveOrder: { type: Schema.Types.ObjectId, ref: 'Order' },
     riskAmount: Number,
+    riskEvaluation: Schema.Types.Mixed,
     openedAt: { type: Date, default: Date.now },
     closedAt: Date,
     exitReason: String,

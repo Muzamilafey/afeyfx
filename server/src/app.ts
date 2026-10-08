@@ -1,0 +1,42 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import pinoHttp from 'pino-http';
+import mongoose from 'mongoose';
+import { env } from './config/env';
+import { logger } from './utils/logger';
+import { apiLimiter } from './middleware/rateLimit';
+import { buildApiRouter } from './routes';
+import { errorHandler, notFound } from './middleware/errorHandler';
+import { tradingState } from './services/TradingState';
+
+export function createApp() {
+  const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1); // behind Nginx
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+      crossOriginResourcePolicy: { policy: 'same-site' },
+      hsts: env.NODE_ENV === 'production' ? { maxAge: 31_536_000, includeSubDomains: true } : false,
+    }),
+  );
+  const origins = env.CLIENT_ORIGIN.split(',').map((s) => s.trim());
+  app.use(cors({ origin: (o, cb) => cb(null, !o || origins.includes(o)), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
+  app.use(express.json({ limit: '100kb' }));
+  app.use(cookieParser());
+  if (env.NODE_ENV !== 'test') app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/health' } }));
+
+  /** Minimal unauthenticated liveness endpoint (no internal details). */
+  app.get('/health', (_req, res) => {
+    const db = mongoose.connection.readyState === 1;
+    res.status(db ? 200 : 503).json({ status: db ? 'ok' : 'degraded', mode: tradingState.get().mode, time: new Date().toISOString() });
+  });
+
+  app.use('/api', apiLimiter, buildApiRouter());
+  app.use(notFound);
+  app.use(errorHandler);
+  return app;
+}
