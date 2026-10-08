@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 export type BusEvent =
   | 'price'
   | 'candle'
+  | 'candle-live'
   | 'signal'
   | 'order'
   | 'trade'

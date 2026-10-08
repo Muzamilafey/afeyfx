@@ -20,6 +20,10 @@ type Verifier = (credential: string) => Promise<GoogleIdentity>;
  */
 class GoogleAuthService {
   private client: OAuth2Client | null = null;
+  /** Drop the cached verifier (after the client id changes). */
+  reset() {
+    this.client = null;
+  }
   private override: Verifier | null = null;
 
   get enabled() {

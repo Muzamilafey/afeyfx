@@ -8,8 +8,9 @@ import { portfolioService } from '../portfolio/PortfolioService';
 import type { Direction } from '../types';
 import { eventBus } from '../utils/eventBus';
 import { errorMessage, logger } from '../utils/logger';
-import { orderExecutionService, type OrderExecutionService, type OrderPurpose } from './OrderExecutionService';
+import { brokerExitPrice, orderExecutionService, type OrderExecutionService, type OrderPurpose } from './OrderExecutionService';
 import { notificationService } from '../notifications/NotificationService';
+import { quoteOf, usdPer } from '../portfolio/fx';
 
 type Mode = 'PAPER' | 'LIVE' | 'REAL';
 type OrderDoc = InstanceType<typeof OrderModel>;
@@ -30,6 +31,10 @@ export interface OpenParams {
   riskEvaluation?: unknown;
   idempotencyKey: string;
   user?: string;
+  /** USD per unit of the quote currency (1 for USD/USDT pairs). */
+  quoteRate?: number;
+  /** Exposure in USD (REAL accounts; external brokers size from it). */
+  investmentUsd?: number;
 }
 
 /**
@@ -54,6 +59,9 @@ export class PositionManager {
       aiAnalysis: p.aiAnalysis,
       riskEvaluation: p.riskEvaluation,
       user: p.user,
+      stopLoss: p.stopLoss,
+      takeProfit: p.takeProfit,
+      investmentUsd: p.investmentUsd,
     });
     if (!(order.filled > 0) || !order.averagePrice) return { order, position: null };
     const existing = await PositionModel.findOne({ entryOrder: order._id });
@@ -80,12 +88,16 @@ export class PositionManager {
       signal: p.signal,
       aiAnalysis: p.aiAnalysis,
       entryOrder: order._id,
-      riskAmount: Math.abs(order.averagePrice - p.stopLoss) * order.filled,
+      riskAmount: Math.abs(order.averagePrice - p.stopLoss) * order.filled * (p.quoteRate ?? 1),
       riskEvaluation: p.riskEvaluation,
+      quoteRate: p.quoteRate ?? 1,
+      broker: order.broker ?? 'internal',
+      brokerRef: order.brokerRef,
     });
     order.position = position._id;
     await order.save();
-    await portfolioService.applyEntry(p.mode, order.averagePrice * order.filled, fees, p.user ?? null);
+    const rate = p.quoteRate ?? 1;
+    await portfolioService.applyEntry(p.mode, order.averagePrice * order.filled * rate, fees * rate, p.user ?? null);
 
     if (p.mode === 'LIVE') await this.placeProtectiveStop(position).catch((err) => logger.error({ err: errorMessage(err) }, 'Protective stop placement failed'));
     eventBus.publish('position', position.toJSON());
@@ -151,9 +163,11 @@ export class PositionManager {
     const exitFee = (order.fee ?? 0) * (amount / order.filled);
     const entryFeeShare = (position.fees ?? 0) * (amount / position.amount);
     const owner = position.user ? position.user.toString() : null;
-    const gross = await portfolioService.applyExit(mode, position.direction as Direction, position.entryPrice, exitPrice, amount, exitFee, owner);
-    const slippage = (await Fill.find({ order: { $in: [position.entryOrder, order._id].filter(Boolean) as never } }).lean()).reduce((s, f) => s + (f.slippage ?? 0), 0);
-    const net = gross - entryFeeShare - exitFee;
+    const entryRate = position.quoteRate ?? 1;
+    const exitRate = usdPer(quoteOf(position.symbol)) ?? entryRate;
+    const gross = await portfolioService.applyExit(mode, position.direction as Direction, position.entryPrice, exitPrice, amount, exitFee, owner, entryRate, exitRate);
+    const slippage = (await Fill.find({ order: { $in: [position.entryOrder, order._id].filter(Boolean) as never } }).lean()).reduce((s, f) => s + (f.slippage ?? 0), 0) * exitRate;
+    const net = gross - entryFeeShare * entryRate - exitFee * exitRate;
 
     const trade = await TradeModel.create({
       mode,
@@ -167,11 +181,15 @@ export class PositionManager {
       entryPrice: position.entryPrice,
       exitPrice,
       grossPnl: gross,
-      fees: entryFeeShare + exitFee,
+      fees: entryFeeShare * entryRate + exitFee * exitRate,
       slippage,
       netPnl: net,
-      returnPct: net / (position.entryPrice * amount),
+      returnPct: net / (position.entryPrice * amount * entryRate),
       exitReason: reason,
+      quoteRate: entryRate,
+      exitQuoteRate: exitRate,
+      broker: position.broker,
+      brokerRef: position.brokerRef,
       position: position._id,
       signal: position.signal,
       aiAnalysis: position.aiAnalysis,
@@ -202,7 +220,7 @@ export class PositionManager {
     eventBus.publish('trade', trade.toJSON());
 
     const kind = /stop/i.test(reason) ? 'STOP_LOSS' : /take profit/i.test(reason) ? 'TAKE_PROFIT' : 'TRADE_CLOSED';
-    void notificationService.notify(kind, `${mode} ${position.direction} ${position.symbol} closed`, `${reason}: exit ${exitPrice}, net P&L ${net.toFixed(2)} (fees ${(entryFeeShare + exitFee).toFixed(2)})`);
+    void notificationService.notify(kind, `${mode} ${position.direction} ${position.symbol} closed`, `${reason}: exit ${exitPrice}, net P&L ${net.toFixed(2)} (fees ${(entryFeeShare * entryRate + exitFee * exitRate).toFixed(2)})`);
     return { order, trade, position };
   }
 
@@ -211,7 +229,8 @@ export class PositionManager {
    * Exits are risk-reducing and are allowed even while the circuit breaker is open.
    */
   async monitor(mode: Mode) {
-    const open = await PositionModel.find({ mode, status: 'OPEN' });
+    // Positions held at an external broker carry broker-side stops; they are synced, not monitored here.
+    const open = await PositionModel.find({ mode, status: 'OPEN', broker: { $in: [null, 'internal'] } });
     for (const p of open) {
       const t = marketDataCache.getTicker(p.exchange, p.symbol)?.data;
       if (!t || !(t.bid > 0 && t.ask > 0)) continue;
@@ -236,6 +255,42 @@ export class PositionManager {
         await this.close(p._id.toString(), 'Take profit', 'TAKE_PROFIT', `tp:${key}`).catch((err) => logger.error({ err: errorMessage(err) }, 'Take-profit exit failed'));
       }
     }
+  }
+
+  /**
+   * A position closed at the external broker (its stop loss / take profit / stop-out fired there):
+   * book it with the broker's realized P&L. Idempotent per position.
+   */
+  async closeFromBroker(positionId: string, pnlUsd: number | undefined, closePrice: number | undefined, reason: string) {
+    const position = await PositionModel.findById(positionId);
+    if (!position || position.status !== 'OPEN') return null;
+    const order = await OrderModel.findOneAndUpdate(
+      { idempotencyKey: `broker-exit:${positionId}` },
+      {
+        $setOnInsert: {
+          mode: position.mode,
+          user: position.user,
+          idempotencyKey: `broker-exit:${positionId}`,
+          exchange: position.exchange,
+          symbol: position.symbol,
+          side: position.direction === 'LONG' ? 'sell' : 'buy',
+          type: 'market',
+          amount: position.amount,
+          reduceOnly: true,
+          status: 'FILLED',
+          filled: position.amount,
+          averagePrice: brokerExitPrice(position, pnlUsd, closePrice),
+          fee: 0,
+          purpose: /stop/i.test(reason) ? 'STOP_LOSS' : 'EXIT',
+          position: position._id,
+          broker: position.broker,
+          brokerRef: position.brokerRef,
+          closedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true },
+    );
+    return this.finalize(position, order!, reason);
   }
 
   /** Emergency close-all acts on the system book; pass includeUsers to also flatten personal demo accounts. */

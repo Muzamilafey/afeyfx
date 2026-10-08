@@ -59,6 +59,10 @@ export function redactSecrets(input: string): string {
     env.COINBASE_API_SECRET,
     env.TELEGRAM_BOT_TOKEN,
     env.ANTHROPIC_API_KEY,
+    env.SMTP_PASS,
+    env.GOOGLE_CLIENT_SECRET,
+    env.GITHUB_CLIENT_SECRET,
+    env.OANDA_API_TOKEN,
     env.JWT_SECRET,
     env.ENCRYPTION_KEY,
   ]) {

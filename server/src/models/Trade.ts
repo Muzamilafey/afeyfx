@@ -22,6 +22,11 @@ const tradeSchema = new Schema(
     netPnl: Number,
     returnPct: Number,
     exitReason: String,
+    /** USD per quote unit at entry and exit; P&L and fees above are in USD. */
+    quoteRate: Number,
+    exitQuoteRate: Number,
+    broker: String,
+    brokerRef: String,
     position: { type: Schema.Types.ObjectId, ref: 'Position' },
     signal: { type: Schema.Types.ObjectId, ref: 'Signal' },
     aiAnalysis: { type: Schema.Types.ObjectId, ref: 'AIAnalysis' },

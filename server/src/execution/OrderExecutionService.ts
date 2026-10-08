@@ -14,6 +14,11 @@ import { errorMessage, logger } from '../utils/logger';
 import { sleep } from '../utils/math';
 import { assertLiveOrderAllowed } from './LiveTradingGuard';
 import { PaperBroker } from './PaperBroker';
+import { PositionModel } from '../models/Position';
+import { brokerService } from '../brokers/BrokerService';
+import { BrokerAmbiguousError, type BrokerId } from '../brokers/types';
+import { notificationService } from '../notifications/NotificationService';
+import { quoteOf, usdPer } from '../portfolio/fx';
 
 export type OrderPurpose = 'ENTRY' | 'EXIT' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'MANUAL' | 'EMERGENCY';
 
@@ -38,6 +43,10 @@ export interface OrderIntent {
   riskEvaluation?: unknown;
   position?: Types.ObjectId | string;
   user?: Types.ObjectId | string;
+  /** REAL-account entries: protective levels and exposure in USD (used by external brokers). */
+  stopLoss?: number;
+  takeProfit?: number;
+  investmentUsd?: number;
 }
 
 const TERMINAL: OrderStatus[] = ['FILLED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
@@ -68,6 +77,17 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 const isNetworkError = (err: unknown) => err instanceof ccxt.NetworkError;
+
+/**
+ * Exit price that makes our ledger's P&L equal the broker's reported realized P&L (USD), so the
+ * trader's balance always matches what the broker actually paid.
+ */
+export function brokerExitPrice(pos: { direction?: string | null; entryPrice: number; amount: number; quoteRate?: number | null; symbol: string }, pnlUsd: number | undefined, fallback: number | undefined) {
+  if (pnlUsd === undefined || !Number.isFinite(pnlUsd)) return fallback ?? pos.entryPrice;
+  const rate = usdPer(quoteOf(pos.symbol)) ?? pos.quoteRate ?? 1;
+  const grossQuote = pnlUsd / rate;
+  return pos.direction === 'LONG' ? pos.entryPrice + grossQuote / pos.amount : pos.entryPrice - grossQuote / pos.amount;
+}
 
 /**
  * Order execution. Paper orders go to the PaperBroker; live orders go through LiveTradingGuard
@@ -146,7 +166,15 @@ export class OrderExecutionService {
     };
 
     if (intent.mode === 'PAPER') await this.executePaper(order, req, this.paperBroker);
-    else if (intent.mode === 'REAL') await this.executePaper(order, req, this.clientBroker);
+    else if (intent.mode === 'REAL') {
+      // Exits go wherever the position lives; entries follow the admin's routing for the asset class.
+      const pos = intent.position ? await PositionModel.findById(intent.position) : null;
+      const route = pos ? (pos.broker ?? 'internal') : await brokerService.routeFor(intent.symbol);
+      if (route === 'internal') {
+        order.broker = 'internal';
+        await this.executePaper(order, req, this.clientBroker);
+      } else await this.executeBroker(order, intent, route as BrokerId, pos);
+    }
     else await this.executeLive(order, req);
 
     eventBus.publish('order', order.toJSON());
@@ -172,6 +200,89 @@ export class OrderExecutionService {
     for (const f of r.fills) {
       await Fill.create({ mode: order.mode, order: order._id, exchange: order.exchange, exchangeTradeId: `${order.exchangeOrderId}-${i++}`, symbol: order.symbol, side: order.side, price: f.price, amount: f.amount, fee: f.fee, slippage: f.slippage, timestamp: new Date() });
     }
+  }
+
+  /**
+   * REAL-account order at an external broker. Guarded (kill switch, routing, real data); after an
+   * ambiguous failure the broker is asked whether the position exists BEFORE anything else happens,
+   * and an unresolved outcome is left UNKNOWN for reconciliation - never retried blindly.
+   */
+  private async executeBroker(order: InstanceType<typeof OrderModel>, intent: OrderIntent, route: BrokerId, pos: InstanceType<typeof PositionModel> | null) {
+    order.broker = route;
+    order.status = 'SUBMITTED';
+    order.submittedAt = new Date();
+    order.attempts = 1;
+    const reject = async (reason: string) => {
+      order.status = 'REJECTED';
+      order.rejectReason = reason;
+      order.closedAt = new Date();
+      await order.save();
+    };
+    try {
+      brokerService.assertAllowed(pos ? 'REDUCE' : 'OPEN');
+    } catch (err) {
+      await reject(errorMessage(err));
+      throw err;
+    }
+    const adapter = await brokerService.adapter(route);
+    if (!adapter.configured()) return reject(`${adapter.name} is not configured`);
+    await order.save();
+    const started = Date.now();
+
+    if (!pos) {
+      const t = marketDataCache.getTicker(order.exchange, order.symbol)?.data;
+      const price = t ? (order.side === 'buy' ? t.ask : t.bid) : 0;
+      if (!price) return reject('No current price');
+      const req = { symbol: order.symbol, direction: (order.side === 'buy' ? 'LONG' : 'SHORT') as 'LONG' | 'SHORT', units: order.amount, investmentUsd: intent.investmentUsd ?? order.amount * price, stopLoss: intent.stopLoss, takeProfit: intent.takeProfit, clientRef: order.idempotencyKey, price };
+      let fill;
+      try {
+        fill = await adapter.open(req);
+      } catch (err) {
+        order.exchangeResponses.push({ at: new Date(), kind: 'broker-open-error', error: errorMessage(err) });
+        if (!(err instanceof BrokerAmbiguousError)) return reject(errorMessage(err));
+        fill = await adapter.lookup(order.idempotencyKey, req, started).catch(() => undefined);
+        if (fill === undefined) {
+          order.status = 'UNKNOWN';
+          order.rejectReason = 'Broker did not confirm; pending reconciliation';
+          await order.save();
+          void notificationService.notify('RECONCILIATION', `${adapter.name}: unconfirmed order`, `${order.symbol} ${order.side} ${order.idempotencyKey}`);
+          return;
+        }
+        if (!fill) return reject('Broker did not open the position');
+      }
+      order.exchangeResponses.push({ at: new Date(), kind: 'broker-open', response: sanitize(fill.raw ?? fill) });
+      if (fill.status !== 'FILLED' || !fill.price || !fill.units) return reject(fill.rejectReason ?? 'Rejected by broker');
+      order.status = 'FILLED';
+      order.filled = fill.units;
+      order.averagePrice = fill.price;
+      order.fee = 0;
+      order.brokerRef = fill.brokerRef;
+      order.exchangeOrderId = `${route}-${fill.brokerRef}`;
+      order.closedAt = new Date();
+      await order.save();
+      return;
+    }
+
+    // Exit: close at the broker and book exactly the broker's realized P&L.
+    let r;
+    try {
+      r = await adapter.close(pos.brokerRef!, { symbol: pos.symbol, clientRef: order.idempotencyKey });
+    } catch (err) {
+      order.exchangeResponses.push({ at: new Date(), kind: 'broker-close-error', error: errorMessage(err) });
+      order.status = 'UNKNOWN';
+      order.rejectReason = `Close not confirmed: ${errorMessage(err)}`;
+      await order.save();
+      return;
+    }
+    order.exchangeResponses.push({ at: new Date(), kind: 'broker-close', response: sanitize(r.raw ?? r) });
+    if (r.status !== 'CLOSED') return reject(r.rejectReason ?? 'Close rejected by broker');
+    order.status = 'FILLED';
+    order.filled = pos.amount;
+    order.averagePrice = brokerExitPrice(pos, r.pnlUsd, r.price);
+    order.fee = 0;
+    order.brokerRef = pos.brokerRef ?? undefined;
+    order.closedAt = new Date();
+    await order.save();
   }
 
   private async executeLive(order: InstanceType<typeof OrderModel>, req: OrderRequest) {

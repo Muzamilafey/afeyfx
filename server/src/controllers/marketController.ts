@@ -9,7 +9,8 @@ import { technicalAnalysis } from '../services/analysis/TechnicalAnalysisService
 import { TIMEFRAMES, type Timeframe } from '../types';
 import { AppError } from '../utils/errors';
 import { audit } from '../services/AuditService';
-import { env } from '../config/env';
+import { FOREX_VENUE, instruments, precisionFor, venueOf } from '../marketData/instruments';
+import { forexDataService } from '../marketData/ForexDataService';
 
 export const marketSchemas = {
   update: z.object({ enabled: z.boolean().optional(), timeframes: z.array(z.enum(TIMEFRAMES)).optional() }),
@@ -39,23 +40,34 @@ export const marketController = {
 };
 
 export const marketDataController = {
+  /** Every tradable instrument (crypto, forex, metals) with its latest quote and metadata. */
   summary(_req: Request, res: Response) {
     const md = getMarketDataService();
-    res.json({ simulated: md.simulated, exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, markets: md.symbols.map((s) => md.summary(s) ?? { symbol: s, unavailable: true }) });
+    const markets = instruments().map((i) => {
+      const s = md.summary(i.symbol, i.venue);
+      const open = i.venue === FOREX_VENUE ? forexDataService.isTradeable(i.symbol) : true;
+      const meta = { category: i.category, name: i.name, base: i.base, quote: i.quote, pricePrecision: i.category === 'crypto' ? precisionFor(i.symbol, s?.price) : i.pricePrecision, marketOpen: open };
+      return s ? { ...s, ...meta } : { symbol: i.symbol, exchange: i.venue, unavailable: true, ...meta };
+    });
+    res.json({ simulated: md.simulated, exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, categories: [...new Set(markets.map((m) => m.category))], markets });
   },
 
   async candles(req: Request, res: Response) {
     const symbol = symParam(req.query.symbol);
     const tf = tfParam(req.query.timeframe);
     const limit = Math.min(Number(req.query.limit ?? 300), 2000);
-    let candles = marketDataCache.getCandles(env.DEFAULT_EXCHANGE, symbol, tf).slice(-limit);
-    if (candles.length < limit) candles = await CandleStore.latest(env.DEFAULT_EXCHANGE, symbol, tf, limit);
+    const venue = venueOf(symbol);
+    let candles = marketDataCache.getCandles(venue, symbol, tf).slice(-limit);
+    if (candles.length < limit) {
+      const stored = await CandleStore.latest(venue, symbol, tf, limit);
+      if (stored.length > candles.length) candles = stored;
+    }
     res.json({ symbol, timeframe: tf, candles });
   },
 
   orderbook(req: Request, res: Response) {
     const symbol = symParam(req.query.symbol);
-    const ob = marketDataCache.getOrderBook(env.DEFAULT_EXCHANGE, symbol);
+    const ob = marketDataCache.getOrderBook(venueOf(symbol), symbol);
     if (!ob) throw new AppError(404, 'No order book data');
     res.json({ ...ob.data, ageMs: Date.now() - ob.receivedAt });
   },
@@ -63,7 +75,7 @@ export const marketDataController = {
   analysis(req: Request, res: Response) {
     const symbol = symParam(req.query.symbol);
     const tf = tfParam(req.query.timeframe);
-    const candles = marketDataCache.getCandles(env.DEFAULT_EXCHANGE, symbol, tf);
+    const candles = marketDataCache.getCandles(venueOf(symbol), symbol, tf);
     if (candles.length < 60) throw new AppError(409, 'Not enough candle data yet');
     const regime = marketRegimeService.detect(candles);
     const indicators = technicalAnalysis.snapshot(candles, { indicators: ['sma', 'ema', 'rsi', 'macd', 'bollinger', 'atr', 'adx', 'stochastic', 'vwap', 'obv', 'volume', 'supportResistance', 'volatility', 'momentum'], vwapSessionMs: 86_400_000 });

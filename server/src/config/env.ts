@@ -95,6 +95,13 @@ const schema = z.object({
   /** exchange = real exchange feeds. simulated = synthetic random-walk feed for development/demo ONLY (refused in production; LIVE impossible). */
   MARKET_DATA_SOURCE: z.enum(['exchange', 'simulated']).default('exchange'),
   MARKET_DATA_STALE_MS: num(30000),
+  /** Extra crypto pairs offered to traders (comma separated). Empty = built-in list of major pairs. */
+  TRADER_CRYPTO_SYMBOLS: z.string().default(''),
+  /** Forex + metals for traders. Needs OANDA credentials (or MARKET_DATA_SOURCE=simulated in development). */
+  FOREX_ENABLED: bool(true),
+  OANDA_API_TOKEN: z.string().default(''),
+  OANDA_ACCOUNT_ID: z.string().default(''),
+  OANDA_ENV: z.enum(['practice', 'live']).default('practice'),
   JOBS_ENABLED: bool(true),
 
   TRADING_MODE: z.enum(['BACKTEST', 'PAPER', 'LIVE']).default('PAPER'),

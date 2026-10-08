@@ -7,7 +7,7 @@ import { setSocketClientCount } from '../services/HealthService';
 import { logger } from '../utils/logger';
 
 /** Market events go to everyone. Account events go to their owner; system-book events to admins only. */
-const PUBLIC_EVENTS = new Set<BusEvent>(['price', 'candle', 'exchange-status']);
+const PUBLIC_EVENTS = new Set<BusEvent>(['price', 'candle', 'candle-live', 'exchange-status']);
 const OWNED_EVENTS = new Set<BusEvent>(['order', 'trade', 'position', 'portfolio']);
 
 export function route(ev: BusEvent, payload: unknown): string | string[] {
@@ -27,7 +27,7 @@ export function route(ev: BusEvent, payload: unknown): string | string[] {
 }
 
 /** Events streamed to authenticated dashboard clients. */
-const STREAMED: BusEvent[] = ['price', 'candle', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'payment', 'system'];
+const STREAMED: BusEvent[] = ['price', 'candle', 'candle-live', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'payment', 'system'];
 
 /**
  * Socket.IO server. Connections must present a valid access token (auth.token). Price updates
@@ -64,11 +64,13 @@ export function attachSocket(server: HttpServer) {
   const lastPrice = new Map<string, number>();
   const handlers = STREAMED.map((ev) => {
     const fn = (payload: unknown) => {
-      if (ev === 'price') {
-        const sym = (payload as { symbol?: string }).symbol ?? '';
+      // Ticks are throttled per symbol (and per timeframe for forming candles) to protect clients.
+      if (ev === 'price' || ev === 'candle-live') {
+        const p = payload as { symbol?: string; exchange?: string; timeframe?: string };
+        const k = `${ev}:${p.exchange ?? ''}:${p.symbol ?? ''}:${p.timeframe ?? ''}`;
         const now = Date.now();
-        if (now - (lastPrice.get(sym) ?? 0) < 250) return;
-        lastPrice.set(sym, now);
+        if (now - (lastPrice.get(k) ?? 0) < (ev === 'price' ? 100 : 200)) return;
+        lastPrice.set(k, now);
       }
       io.to(route(ev, payload)).emit(ev, payload);
     };

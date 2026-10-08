@@ -13,6 +13,9 @@ import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 import { floorTo } from '../utils/math';
 import { paymentService } from '../payments/PaymentService';
+import { FOREX_VENUE, instrumentOf } from '../marketData/instruments';
+import { forexDataService } from '../marketData/ForexDataService';
+import { quoteOf, usdPer } from '../portfolio/fx';
 
 /**
  * Personal trader accounts. Every query is scoped to the caller, so one trader can never see or
@@ -67,17 +70,24 @@ export const accountController = {
       if (env.MARKET_DATA_SOURCE === 'simulated') throw new AppError(409, 'Real-account trading is unavailable while simulated market data is active', 'SIMULATED_DATA');
       if (!tradingState.get().tradingEnabled) throw new AppError(423, 'New trades are temporarily stopped', 'TRADING_STOPPED');
     }
-    const exchange = env.DEFAULT_EXCHANGE;
+    // Only catalogue instruments; each trades on its own venue's live quotes.
+    const inst = instrumentOf(b.symbol);
+    if (!inst) throw new AppError(400, 'This market is not available', 'UNKNOWN_SYMBOL');
+    const exchange = inst.venue;
+    if (inst.venue === FOREX_VENUE && !forexDataService.isTradeable(b.symbol)) throw new AppError(409, 'This market is closed right now (forex trades Sunday 21:00 to Friday 21:00 UTC)', 'MARKET_CLOSED');
     const t = marketDataCache.getTicker(exchange, b.symbol)?.data;
     const book = marketDataCache.getOrderBook(exchange, b.symbol)?.data;
     if (!t || !book || marketDataCache.dataAgeMs(exchange, b.symbol) > env.MARKET_DATA_STALE_MS) throw new AppError(409, 'Market data unavailable or stale for this symbol', 'NO_MARKET_DATA');
+    // Investment is in USD; pairs quoted in another currency (USD/JPY, EUR/GBP...) are converted.
+    const quoteRate = usdPer(quoteOf(b.symbol));
+    if (!quoteRate) throw new AppError(409, `No ${quoteOf(b.symbol)}/USD rate available to value this trade`, 'NO_FX_RATE');
     const p = portfolioService.view(await portfolioService.revalue(mode, owner(req)));
     // Fees are charged on top of the investment; REAL accounts also keep a small buffer for
     // book-walking slippage so cash can never go negative.
     const buffer = mode === 'REAL' ? env.PAPER_FEE_RATE + 0.005 : 0;
     if (b.investment * (1 + buffer) > p.available + 1e-9) throw new AppError(400, `Insufficient ${mode === 'REAL' ? '' : 'demo '}balance (available ${p.available.toFixed(2)})`, 'INSUFFICIENT_BALANCE');
     const entry = b.direction === 'LONG' ? t.ask : t.bid;
-    const amount = floorTo(b.investment / entry, 6);
+    const amount = floorTo(b.investment / quoteRate / entry, inst.amountPrecision);
     if (!(amount > 0)) throw new AppError(400, 'Order size too small', 'TOO_SMALL');
     const sl = b.direction === 'LONG' ? entry * (1 - b.stopLossPct) : entry * (1 + b.stopLossPct);
     const tp = b.takeProfitPct ? (b.direction === 'LONG' ? entry * (1 + b.takeProfitPct) : entry * (1 - b.takeProfitPct)) : undefined;
@@ -92,6 +102,8 @@ export const accountController = {
       strategyKey: 'manual',
       idempotencyKey: `${mode === 'REAL' ? 'real' : 'demo'}:${owner(req)}:${b.idempotencyKey ?? randomUUID()}`,
       user: owner(req),
+      quoteRate,
+      investmentUsd: b.investment,
     });
     if (!r.position) throw new AppError(422, `Order not filled: ${r.order.rejectReason ?? r.order.status}`, 'ORDER_NOT_FILLED');
     res.status(201).json({ order: r.order, position: r.position });

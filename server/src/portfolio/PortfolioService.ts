@@ -6,6 +6,7 @@ import { TradeModel } from '../models/Trade';
 import { marketDataCache } from '../marketData/MarketDataCache';
 import { eventBus } from '../utils/eventBus';
 import { computeMetrics, type PerformanceMetrics } from './metrics';
+import { quoteOf, usdPer } from './fx';
 import type { Direction } from '../types';
 
 export type Mode = 'PAPER' | 'LIVE' | 'REAL';
@@ -46,23 +47,26 @@ export class PortfolioService {
     const positions = await PositionModel.find({ mode, status: 'OPEN', user: ownerQ(owner) });
     let unrealized = 0;
     let exposure = 0;
-    let lockedShortCollateral = 0;
-    let longValue = 0;
+    let collateral = 0;
     for (const pos of positions) {
       const t = marketDataCache.getTicker(pos.exchange, pos.symbol)?.data;
       const px = t ? (pos.direction === 'LONG' ? t.bid : t.ask) || t.last : pos.currentPrice ?? pos.entryPrice;
-      const u = pos.direction === 'LONG' ? (px - pos.entryPrice) * pos.amount : (pos.entryPrice - px) * pos.amount;
+      // Positions in non-USD quotes (e.g. USD/JPY) are valued in USD: collateral at the entry rate,
+      // open P&L at the current rate.
+      const entryRate = pos.quoteRate ?? 1;
+      const nowRate = usdPer(quoteOf(pos.symbol)) ?? entryRate;
+      const uQuote = pos.direction === 'LONG' ? (px - pos.entryPrice) * pos.amount : (pos.entryPrice - px) * pos.amount;
+      const u = uQuote * nowRate;
       pos.currentPrice = px;
       pos.unrealizedPnl = u;
       pos.highWatermark = Math.max(pos.highWatermark ?? px, px);
       pos.lowWatermark = Math.min(pos.lowWatermark ?? px, px);
       await pos.save();
       unrealized += u;
-      exposure += px * pos.amount;
-      if (pos.direction === 'LONG') longValue += px * pos.amount;
-      else lockedShortCollateral += pos.entryPrice * pos.amount;
+      exposure += px * pos.amount * nowRate;
+      collateral += pos.entryPrice * pos.amount * entryRate;
     }
-    const equity = p.balance + longValue + lockedShortCollateral + positions.filter((x) => x.direction === 'SHORT').reduce((s, x) => s + (x.unrealizedPnl ?? 0), 0);
+    const equity = p.balance + collateral + unrealized;
     const now = new Date();
     if (!p.dayStartAt || p.dayStartAt < startOfUtcDay(now)) {
       p.dayStartAt = startOfUtcDay(now);
@@ -116,11 +120,17 @@ export class PortfolioService {
     await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: -(notional + fee), fees: fee } });
   }
 
-  /** Apply a filled exit and realize P&L. */
-  async applyExit(mode: Mode, direction: Direction, entryPrice: number, exitPrice: number, amount: number, fee: number, owner: Owner = null) {
-    const gross = direction === 'LONG' ? (exitPrice - entryPrice) * amount : (entryPrice - exitPrice) * amount;
-    const credit = direction === 'LONG' ? exitPrice * amount - fee : entryPrice * amount + gross - fee;
-    await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: credit, fees: fee, realizedPnl: gross - fee } });
+  /**
+   * Apply a filled exit and realize P&L: the entry collateral comes back (at the entry rate) plus
+   * the P&L converted at the exit rate. `fee` is in quote currency. Returns gross P&L in USD.
+   * With rates of 1 (USD/USDT pairs) this is exactly exit proceeds (long) or collateral + P&L (short).
+   */
+  async applyExit(mode: Mode, direction: Direction, entryPrice: number, exitPrice: number, amount: number, fee: number, owner: Owner = null, entryRate = 1, exitRate = 1) {
+    const grossQuote = direction === 'LONG' ? (exitPrice - entryPrice) * amount : (entryPrice - exitPrice) * amount;
+    const gross = grossQuote * exitRate;
+    const feeUsd = fee * exitRate;
+    const credit = entryPrice * amount * entryRate + gross - feeUsd;
+    await PortfolioModel.updateOne({ mode, owner: ownerQ(owner) }, { $inc: { balance: credit, fees: feeUsd, realizedPnl: gross - feeUsd } });
     return gross;
   }
 

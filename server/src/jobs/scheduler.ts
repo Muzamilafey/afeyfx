@@ -14,6 +14,7 @@ import { SystemEventModel } from '../models/SystemEvent';
 import { notificationService } from '../notifications/NotificationService';
 import { arbitrageService } from '../services/ArbitrageService';
 import { paymentService } from '../payments/PaymentService';
+import { brokerService } from '../brokers/BrokerService';
 import { logger, errorMessage } from '../utils/logger';
 
 type Task = ReturnType<typeof cron.schedule>;
@@ -54,6 +55,8 @@ export class JobScheduler {
       await positionManager.monitor('REAL');
       if (tradingState.get().mode === 'LIVE') await positionManager.monitor('LIVE');
     });
+    // External brokers: positions closed broker-side (SL/TP) + reconciliation of open positions.
+    this.job('broker-sync', '*/15 * * * * *', () => brokerService.sync((id, pnl, px, reason) => positionManager.closeFromBroker(id, pnl, px, reason)));
     // M-Pesa: re-query deposits whose callback never arrived; expire stale requests.
     this.job('payments-reconcile', '20 * * * * *', () => paymentService.reconcilePending());
     // Risk checks: drawdown limits and clock sync.

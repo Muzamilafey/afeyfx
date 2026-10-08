@@ -12,6 +12,7 @@ import { validateCandles } from './candleUtils';
 import { volatility, lastValid } from '../services/analysis/indicators';
 import { Exchange } from '../models/Exchange';
 import { Market } from '../models/Market';
+import { cryptoSymbols } from './instruments';
 
 export interface MarketSummary {
   exchange: string;
@@ -43,7 +44,10 @@ export class MarketDataService {
   private timers: NodeJS.Timeout[] = [];
   private running = false;
   readonly exchange: string;
+  /** Every crypto pair streamed (strategy symbols + extra pairs offered to traders). */
   readonly symbols: string[];
+  /** Symbols the strategy engine trades; only these gate the circuit breaker's freshness check. */
+  readonly engineSymbols: string[];
   readonly timeframes: Timeframe[];
   wsConnected = false;
   lastRestOkAt = 0;
@@ -51,7 +55,8 @@ export class MarketDataService {
 
   constructor(exchange = env.DEFAULT_EXCHANGE, symbols = symbolsFromEnv(), timeframes = timeframesFromEnv()) {
     this.exchange = exchange;
-    this.symbols = symbols;
+    this.engineSymbols = symbols;
+    this.symbols = [...new Set([...symbols, ...(exchange === env.DEFAULT_EXCHANGE ? cryptoSymbols() : [])])];
     this.timeframes = timeframes.filter((t): t is Timeframe => (TIMEFRAMES as readonly string[]).includes(t));
   }
 
@@ -69,9 +74,19 @@ export class MarketDataService {
     if (this.exchange === 'binance') {
       this.ws = new BinanceWsStream(this.symbols, this.timeframes, {
         onTicker: (t) => {
-          if (marketDataCache.setTicker(this.exchange, t)) eventBus.publish('price', { exchange: this.exchange, ...t });
+          // bookTicker carries bid/ask only; keep the last traded price from the trade stream.
+          const cur = marketDataCache.getTicker(this.exchange, t.symbol)?.data;
+          const merged = cur ? { ...cur, bid: t.bid, ask: t.ask, timestamp: t.timestamp, last: cur.last > 0 && Date.now() - cur.timestamp < 10_000 ? cur.last : t.last } : t;
+          if (marketDataCache.setTicker(this.exchange, merged)) eventBus.publish('price', { exchange: this.exchange, ...merged });
         },
         onClosedCandle: (symbol, tf, c) => void this.ingestCandles(symbol, tf as Timeframe, [c], 'WS'),
+        onFormingCandle: (symbol, tf, c) => eventBus.publish('candle-live', { exchange: this.exchange, symbol, timeframe: tf, ...c }),
+        onTrade: (symbol, price, timestamp) => {
+          const cur = marketDataCache.getTicker(this.exchange, symbol)?.data;
+          if (!cur) return;
+          const t = { ...cur, last: price, timestamp: Math.max(timestamp, cur.timestamp) };
+          if (marketDataCache.setTicker(this.exchange, t)) eventBus.publish('price', { exchange: this.exchange, ...t });
+        },
         onStatus: (connected, info) => {
           this.wsConnected = connected;
           eventBus.publish('exchange-status', { exchange: this.exchange, channel: 'ws', connected, info });
@@ -102,6 +117,7 @@ export class MarketDataService {
       },
       onBook: (b) => marketDataCache.setOrderBook(this.exchange, b),
       onClosedCandles: (symbol, tf, cs) => void this.ingestCandles(symbol, tf, cs, 'SYNTHETIC'),
+      onFormingCandle: (symbol, tf, c) => eventBus.publish('candle-live', { exchange: this.exchange, symbol, timeframe: tf, simulated: true, ...c }),
     });
     const hist = this.sim.history(500);
     for (const [sym, byTf] of hist) {
@@ -110,7 +126,7 @@ export class MarketDataService {
       if (lastMinute?.length) this.sim.setPrice(sym, lastMinute[lastMinute.length - 1].close);
     }
     this.wsConnected = true;
-    this.sim.start(1000);
+    this.sim.start(500);
     this.timers.push(
       setInterval(() => {
         this.lastRestOkAt = Date.now();
@@ -264,7 +280,7 @@ export class MarketDataService {
   checkHealth() {
     const maxAge = env.MARKET_DATA_STALE_MS;
     let worst = 0;
-    for (const s of this.symbols) worst = Math.max(worst, marketDataCache.dataAgeMs(this.exchange, s));
+    for (const s of this.engineSymbols) worst = Math.max(worst, marketDataCache.dataAgeMs(this.exchange, s));
     circuitBreaker.checkDataFreshness(worst, maxAge, `(${this.exchange})`);
     if (this.lastRestOkAt && Date.now() - this.lastRestOkAt > maxAge * 2 && !this.wsConnected) {
       circuitBreaker.trip('EXCHANGE_DISCONNECTED', `${this.exchange} unreachable (REST and WS)`);
@@ -275,18 +291,18 @@ export class MarketDataService {
     return { worstDataAgeMs: worst, wsConnected: this.wsConnected, lastRestOkAt: this.lastRestOkAt };
   }
 
-  summary(symbol: string): MarketSummary | null {
-    const t = marketDataCache.getTicker(this.exchange, symbol);
+  summary(symbol: string, venue = this.exchange): MarketSummary | null {
+    const t = marketDataCache.getTicker(venue, symbol);
     if (!t) return null;
-    const candles = marketDataCache.getCandles(this.exchange, symbol, this.timeframes.includes('1h') ? '1h' : this.timeframes[0]);
+    const candles = marketDataCache.getCandles(venue, symbol, this.timeframes.includes('1h') ? '1h' : this.timeframes[0]);
     const vol = candles.length > 30 ? lastValid(volatility(candles.map((c) => c.close), 20)) : undefined;
     const mid = (t.data.bid + t.data.ask) / 2;
-    const extras = marketDataCache.getExtras(this.exchange, symbol);
-    const day = marketDataCache.getCandles(this.exchange, symbol, this.timeframes.includes('1h') ? '1h' : this.timeframes[this.timeframes.length - 1]).slice(-24);
+    const extras = marketDataCache.getExtras(venue, symbol);
+    const day = marketDataCache.getCandles(venue, symbol, this.timeframes.includes('1h') ? '1h' : this.timeframes[this.timeframes.length - 1]).slice(-24);
     const change24hPct = t.data.change24hPct ?? (day.length ? t.data.last / day[0].open - 1 : undefined);
     const volume24h = t.data.quoteVolume ?? (day.length ? day.reduce((sum, c) => sum + c.volume * c.close, 0) : undefined);
     return {
-      exchange: this.exchange,
+      exchange: venue,
       symbol,
       price: t.data.last,
       bid: t.data.bid,
@@ -295,7 +311,7 @@ export class MarketDataService {
       change24hPct,
       volume24h,
       volatility: vol,
-      dataAgeMs: marketDataCache.dataAgeMs(this.exchange, symbol),
+      dataAgeMs: marketDataCache.dataAgeMs(venue, symbol),
       fundingRate: extras?.fundingRate,
       openInterest: extras?.openInterest,
     };

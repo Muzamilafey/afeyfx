@@ -16,6 +16,7 @@ import { riskController, riskSchemas } from '../controllers/riskController';
 import { notificationController, settingsController, settingsSchemas } from '../controllers/settingsController';
 import { systemController, systemSchemas } from '../controllers/systemController';
 import { accountController, accountSchemas } from '../controllers/accountController';
+import { brokerController, featuresController, integrationController, integrationSchemas } from '../controllers/integrationController';
 import { adminPaymentController, mpesaCallbackController, paymentController, paymentSchemas } from '../controllers/paymentController';
 
 /** Read access to system-wide data (strategy book, risk, logs) is admin-only. */
@@ -87,6 +88,26 @@ export function buildApiRouter() {
   adminPayments.post('/:id/resolve', ...protectedAdmin, v(paymentSchemas.resolve), h(adminPaymentController.resolve));
   adminPayments.post('/:id/requery', h(adminPaymentController.requery));
   api.use('/admin/payments', adminPayments);
+
+  // ---- feature availability (the UI hides features whose integration is not configured) ----
+  api.get('/features', h(featuresController));
+
+  // ---- admin integrations: every .env integration key, editable in the console ----
+  const integrations = Router();
+  integrations.use(...admin);
+  integrations.get('/', h(integrationController.get));
+  integrations.put('/', ...protectedAdmin, v(integrationSchemas.update), h(integrationController.update));
+  integrations.post('/:id/test', protectedActionLimiter, h(integrationController.test));
+  api.use('/admin/integrations', integrations);
+
+  // ---- admin brokers: where REAL-account orders execute ----
+  const brokers = Router();
+  brokers.use(...admin);
+  brokers.get('/', h(brokerController.get));
+  brokers.put('/deriv', ...protectedAdmin, v(integrationSchemas.deriv), h(brokerController.updateDeriv));
+  brokers.post('/:id/test', protectedActionLimiter, h(brokerController.test));
+  brokers.put('/routes', ...protectedAdmin, v(integrationSchemas.route), h(brokerController.setRoute));
+  api.use('/admin/brokers', brokers);
 
   // ---- personal demo account (any signed-in user; trading needs a verified email) ----
   const account = Router();

@@ -88,6 +88,13 @@ export class NewsService {
     return this.enabled && this.urls.length > 0;
   }
 
+  /** Re-read the feed settings (after they change in the admin console). */
+  reconfigure() {
+    this.urls = env.NEWS_RSS_URLS.split(',').map((s) => s.trim()).filter((s) => /^https:\/\//.test(s));
+    this.enabled = env.NEWS_ENABLED;
+    this.cache = null;
+  }
+
   private async loadAll(): Promise<NewsItem[]> {
     if (this.cache && Date.now() - this.cache.at < this.ttlMs) return this.cache.items;
     const results = await Promise.allSettled(

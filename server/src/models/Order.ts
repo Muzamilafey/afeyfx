@@ -37,6 +37,9 @@ const orderSchema = new Schema(
     purpose: { type: String, enum: ['ENTRY', 'EXIT', 'STOP_LOSS', 'TAKE_PROFIT', 'MANUAL', 'EMERGENCY'], default: 'ENTRY' },
     exchangeResponses: { type: [Schema.Types.Mixed], default: [] },
     rejectReason: String,
+    /** REAL-account orders: internal fill or the external broker that executed it. */
+    broker: String,
+    brokerRef: String,
     attempts: { type: Number, default: 0 },
     submittedAt: Date,
     lastCheckedAt: Date,

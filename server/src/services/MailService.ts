@@ -24,6 +24,12 @@ class MailService {
     return !!this.override || !!env.SMTP_HOST;
   }
 
+  /** Drop the cached SMTP transport (after SMTP settings change in the admin console). */
+  reset() {
+    this.transporter?.close();
+    this.transporter = null;
+  }
+
   /** Tests inject a capturing sender. */
   setSender(s: Sender | null) {
     this.override = s;

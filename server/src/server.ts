@@ -16,9 +16,15 @@ import { notificationService } from './notifications/NotificationService';
 import { adapterFromStoredCredential } from './controllers/exchangeController';
 import { portfolioService } from './portfolio/PortfolioService';
 import { tradingState } from './services/TradingState';
+import { integrationService } from './services/IntegrationService';
+import { registerIntegrationHooks } from './services/integrationHooks';
+import { forexDataService } from './marketData/ForexDataService';
 
 async function main() {
   await connectDb();
+  // Integration keys saved in the admin console override .env (and rebuild clients when changed).
+  await integrationService.load();
+  registerIntegrationHooks();
   await SettingsService.load(); // always boots in PAPER, live inactive
   await seedStrategies(symbolsFromEnv());
   await portfolioService.get('PAPER');
@@ -45,7 +51,10 @@ async function main() {
   const server = http.createServer(app);
   const socket = attachSocket(server);
 
-  if (env.MARKET_DATA_ENABLED) await getMarketDataService().start();
+  if (env.MARKET_DATA_ENABLED) {
+    await getMarketDataService().start();
+    await forexDataService.start();
+  }
   if (env.JOBS_ENABLED) jobScheduler.start();
 
   server.listen(env.PORT, '127.0.0.1', () => {
@@ -59,6 +68,7 @@ async function main() {
     logger.info({ sig }, 'Shutting down');
     jobScheduler.stop();
     getMarketDataService().stop();
+    forexDataService.stop();
     socket.close();
     server.close();
     await exchangeRegistry.closeAll();

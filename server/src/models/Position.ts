@@ -28,6 +28,13 @@ const positionSchema = new Schema(
     /** Exchange-side protective stop (LIVE) so the position is protected even if the engine is down. */
     protectiveOrder: { type: Schema.Types.ObjectId, ref: 'Order' },
     riskAmount: Number,
+    /** USD value of one unit of the quote currency at entry (1 for USD/USDT pairs). */
+    quoteRate: { type: Number, default: 1 },
+    /** Where a REAL-account position is executed: internal (default) or an external broker. */
+    broker: { type: String, default: 'internal' },
+    /** Broker-side id (Deriv contract id, OANDA trade id). */
+    brokerRef: String,
+    brokerData: Schema.Types.Mixed,
     riskEvaluation: Schema.Types.Mixed,
     openedAt: { type: Date, default: Date.now },
     closedAt: Date,

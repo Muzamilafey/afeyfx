@@ -5,13 +5,17 @@ import type { Candle, Ticker } from '../types';
 export interface WsHandlers {
   onTicker(t: Ticker): void;
   onClosedCandle(symbol: string, tf: string, c: Candle): void;
+  /** Every update of the candle that is still forming (Binance pushes these ~every second). */
+  onFormingCandle?(symbol: string, tf: string, c: Candle): void;
+  /** Every executed trade (aggregated): the true last price, tick by tick. */
+  onTrade?(symbol: string, price: number, timestamp: number): void;
   onStatus(connected: boolean, info?: string): void;
 }
 
 const toStream = (symbol: string) => symbol.replace('/', '').toLowerCase();
 
 /**
- * Native Binance combined-stream client (bookTicker + kline) for low-latency data.
+ * Native Binance combined-stream client (bookTicker + aggTrade + kline) for low-latency data.
  * - Automatic reconnection with exponential backoff (capped) and jitter
  * - Heartbeat watchdog: reconnects if no message within `staleMs`
  * - De-duplication: bookTicker by update id, klines by (symbol, tf, open time); only CLOSED klines emitted
@@ -56,7 +60,7 @@ export class BinanceWsStream {
   }
 
   private url() {
-    const streams = this.symbols.flatMap((s) => [`${toStream(s)}@bookTicker`, ...this.timeframes.map((tf) => `${toStream(s)}@kline_${tf}`)]);
+    const streams = this.symbols.flatMap((s) => [`${toStream(s)}@bookTicker`, `${toStream(s)}@aggTrade`, ...this.timeframes.map((tf) => `${toStream(s)}@kline_${tf}`)]);
     return `${this.opts.baseUrl}?streams=${streams.join('/')}`;
   }
 
@@ -112,12 +116,23 @@ export class BinanceWsStream {
       this.handlers.onTicker({ symbol: sym, timestamp: Date.now(), bid, ask, last: (bid + ask) / 2 });
       return;
     }
+    if (msg.stream.endsWith('@aggTrade')) {
+      const sym = this.symbolMap.get(String(d.s));
+      const price = Number(d.p);
+      if (sym && price > 0) this.handlers.onTrade?.(sym, price, Number(d.T) || Date.now());
+      return;
+    }
     if (msg.stream.includes('@kline_')) {
       const k = d.k as Record<string, unknown>;
       const sym = this.symbolMap.get(String(d.s));
-      if (!sym || !k || k.x !== true) return; // only closed candles
+      if (!sym || !k) return;
       const tf = String(k.i);
       const ts = Number(k.t);
+      if (k.x !== true) {
+        // Forming candle: shown live on charts, never persisted or used by strategies.
+        this.handlers.onFormingCandle?.(sym, tf, { timestamp: ts, open: Number(k.o), high: Number(k.h), low: Number(k.l), close: Number(k.c), volume: Number(k.v) });
+        return;
+      }
       const key = `${sym}:${tf}`;
       if ((this.lastKline.get(key) ?? -1) >= ts) return;
       this.lastKline.set(key, ts);
