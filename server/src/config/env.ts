@@ -1,5 +1,11 @@
-import 'dotenv/config';
+import path from 'path';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+// Load server/.env first, then the repository-root .env. Real environment variables always win.
+if (process.env.NODE_ENV !== 'test') {
+  dotenv.config({ path: [path.resolve(process.cwd(), '.env'), path.resolve(__dirname, '../../../.env')], quiet: true });
+}
 
 /**
  * Environment configuration.

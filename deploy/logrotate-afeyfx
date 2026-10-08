@@ -1,0 +1,10 @@
+# /etc/logrotate.d/afeyfx
+/var/log/afeyfx/*.log {
+  daily
+  rotate 30
+  compress
+  delaycompress
+  missingok
+  notifempty
+  copytruncate
+}
