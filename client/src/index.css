@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@utility card {
+  @apply rounded-xl border border-slate-800 bg-slate-900/70 p-4;
+}
+@utility card-title {
+  @apply mb-3 text-xs font-semibold tracking-wider text-slate-400 uppercase;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-sky-600 text-white hover:bg-sky-500;
+}
+@utility btn-ghost {
+  @apply btn border border-slate-700 text-slate-200 hover:bg-slate-800;
+}
+@utility btn-danger {
+  @apply btn bg-red-600 text-white hover:bg-red-500;
+}
+@utility btn-warn {
+  @apply btn bg-amber-600 text-white hover:bg-amber-500;
+}
+@utility input {
+  @apply w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500;
+}
+@utility label {
+  @apply mb-1 block text-xs font-medium text-slate-400;
+}
+
+@layer components {
+  .table {
+    @apply w-full text-left text-sm;
+  }
+  .table th {
+    @apply border-b border-slate-800 px-2 py-2 text-xs font-medium text-slate-400 uppercase;
+  }
+  .table td {
+    @apply border-b border-slate-800/60 px-2 py-2 font-mono text-xs;
+  }
+}

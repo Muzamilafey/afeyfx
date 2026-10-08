@@ -114,7 +114,7 @@ export class CircuitBreaker {
   }
 
   checkDataFreshness(ageMs: number, maxAgeMs: number, label = '') {
-    if (!(ageMs >= 0) || ageMs > maxAgeMs) this.trip('STALE_MARKET_DATA', `Market data ${label} is ${Math.round(ageMs)}ms old (max ${maxAgeMs}ms)`);
+    if (!(ageMs >= 0) || ageMs > maxAgeMs) this.trip('STALE_MARKET_DATA', Number.isFinite(ageMs) ? `Market data ${label} is ${Math.round(ageMs)}ms old (max ${maxAgeMs}ms)` : `No market data received ${label}`.trim());
     else this.recover('STALE_MARKET_DATA');
   }
 
