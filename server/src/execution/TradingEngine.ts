@@ -18,6 +18,7 @@ import { eventBus } from '../utils/eventBus';
 import { errorMessage, logger } from '../utils/logger';
 import { positionManager } from './PositionManager';
 import { checkLiveOrder } from './LiveTradingGuard';
+import { newsService } from '../services/news/NewsService';
 
 export interface ScanOutcome {
   strategy: string;
@@ -280,6 +281,7 @@ export class TradingEngine {
       orderBook: b ? { bidDepth, askDepth, imbalance: bidDepth + askDepth > 0 ? (bidDepth - askDepth) / (bidDepth + askDepth) : 0, topLevels: Math.min(b.bids.length, b.asks.length) } : undefined,
       openPositions: open.map((p) => ({ symbol: p.symbol, direction: p.direction, entryPrice: p.entryPrice, unrealizedPnl: p.unrealizedPnl ?? 0 })),
       strategySignal: { strategy: strategyKey, action: sig.action, confidence: sig.confidence, reason: sig.reason, stopLoss: sig.stopLoss, takeProfit: sig.takeProfit },
+      news: await newsService.headlines(symbol),
       dataAgeMs: marketDataCache.dataAgeMs(exchange, symbol),
     };
   }

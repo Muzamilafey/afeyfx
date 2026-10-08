@@ -316,8 +316,13 @@ export class CcxtAdapter implements ExchangeAdapter {
   async getStatus(): Promise<ExchangeStatus> {
     try {
       if (this.client.has?.fetchStatus) {
-        const s = await this.client.fetchStatus();
-        return { ok: s.status === 'ok', status: String(s.status ?? 'unknown'), updated: s.updated ?? undefined };
+        try {
+          const s = await this.client.fetchStatus();
+          return { ok: s.status === 'ok', status: String(s.status ?? 'unknown'), updated: s.updated ?? undefined };
+        } catch (err) {
+          // Some sandboxes (e.g. Binance spot testnet) lack the status endpoint; fall back to a ping.
+          if (!this.testnet) throw err;
+        }
       }
       await this.client.fetchTime?.();
       return { ok: true, status: 'ok' };

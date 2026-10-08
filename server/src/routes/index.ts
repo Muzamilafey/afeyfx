@@ -110,6 +110,7 @@ export function buildApiRouter() {
   const ai = Router();
   ai.get('/status', h(aiController.status));
   ai.get('/analyses', h(aiController.list));
+  ai.get('/news', h(aiController.news));
   ai.post('/analyze', ...trader, v(aiSchemas.analyze), h(aiController.analyze));
   ai.post('/review/:key', ...admin, h(aiController.reviewStrategy));
   api.use('/ai', ai);

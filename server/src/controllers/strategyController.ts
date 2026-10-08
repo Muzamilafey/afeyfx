@@ -26,6 +26,8 @@ export const strategySchemas = {
   review: z.object({ decision: z.enum(['APPROVED', 'REJECTED']), totp: z.string().optional() }),
 };
 
+const MIN_EVIDENCE_TRADES = 5;
+
 /** Allowed promotions. Each step requires evidence; LIVE requires prior human APPROVAL. */
 const NEXT: Record<string, string[]> = {
   RESEARCH: ['BACKTEST', 'RETIRED'],
@@ -86,8 +88,9 @@ export const strategyController = {
     const to = req.body.stage as string;
     if (!NEXT[doc.stage]?.includes(to)) throw new AppError(409, `Cannot move from ${doc.stage} to ${to}`);
     if (to === 'OUT_OF_SAMPLE' || to === 'PAPER') {
-      const runs = await BacktestRunModel.countDocuments({ strategyKey: doc.key, status: 'COMPLETED', segment: to === 'PAPER' ? 'OUT_OF_SAMPLE' : { $in: ['FULL', 'TRAIN', 'OUT_OF_SAMPLE'] } });
-      if (!runs) throw new AppError(412, to === 'PAPER' ? 'An out-of-sample (walk-forward) backtest is required before paper trading' : 'A completed backtest is required');
+      // Evidence must contain actual trades - a backtest that never traded proves nothing.
+      const runs = await BacktestRunModel.countDocuments({ strategyKey: doc.key, status: 'COMPLETED', segment: to === 'PAPER' ? 'OUT_OF_SAMPLE' : { $in: ['FULL', 'TRAIN', 'OUT_OF_SAMPLE'] }, 'metrics.numberOfTrades': { $gte: MIN_EVIDENCE_TRADES } });
+      if (!runs) throw new AppError(412, to === 'PAPER' ? `An out-of-sample (walk-forward) backtest with at least ${MIN_EVIDENCE_TRADES} trades is required before paper trading` : `A completed backtest with at least ${MIN_EVIDENCE_TRADES} trades is required`);
     }
     if (to === 'APPROVED') {
       const paperTrades = await TradeModel.countDocuments({ mode: 'PAPER', strategyKey: doc.key });

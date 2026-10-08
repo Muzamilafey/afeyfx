@@ -112,6 +112,8 @@ export class ClaudeService {
         signal: d.signal,
         confidence: d.confidence,
         marketRegime: d.marketRegime,
+        newsSentiment: d.newsSentiment,
+        newsCount: input.news?.length ?? 0,
         riskLevel: d.riskLevel,
         reason: d.reason,
         output: d,

@@ -10,6 +10,7 @@ export const MarketAnalysisSchema = z.object({
   reason: z.string(),
   keyRisks: z.array(z.string()),
   dataQualityConcerns: z.array(z.string()),
+  newsSentiment: z.enum(['BULLISH', 'BEARISH', 'NEUTRAL', 'NONE']).default('NONE'),
 });
 export type AIMarketAnalysis = z.infer<typeof MarketAnalysisSchema>;
 
@@ -17,7 +18,7 @@ export type AIMarketAnalysis = z.infer<typeof MarketAnalysisSchema>;
 export const MarketAnalysisJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['symbol', 'signal', 'confidence', 'marketRegime', 'riskLevel', 'reason', 'keyRisks', 'dataQualityConcerns'],
+  required: ['symbol', 'signal', 'confidence', 'marketRegime', 'riskLevel', 'reason', 'keyRisks', 'dataQualityConcerns', 'newsSentiment'],
   properties: {
     symbol: { type: 'string' },
     signal: { type: 'string', enum: ['LONG', 'SHORT', 'HOLD', 'EXIT'] },
@@ -27,6 +28,7 @@ export const MarketAnalysisJsonSchema = {
     reason: { type: 'string' },
     keyRisks: { type: 'array', items: { type: 'string' } },
     dataQualityConcerns: { type: 'array', items: { type: 'string' } },
+    newsSentiment: { type: 'string', enum: ['BULLISH', 'BEARISH', 'NEUTRAL', 'NONE'], description: 'Aggregate sentiment of the provided headlines for this symbol; NONE when no news was provided' },
   },
 } as const;
 

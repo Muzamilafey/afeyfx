@@ -291,6 +291,7 @@ export function DashboardPage() {
                     {a.confidence !== undefined && <span className="text-slate-400">conf {fmtPct(a.confidence, 0)}</span>}
                     {a.marketRegime && <Badge color="blue">{a.marketRegime}</Badge>}
                     {a.riskLevel && <Badge color={a.riskLevel === 'HIGH' ? 'red' : a.riskLevel === 'MEDIUM' ? 'amber' : 'green'}>{a.riskLevel}</Badge>}
+                    {a.newsSentiment && a.newsSentiment !== 'NONE' && <Badge color={a.newsSentiment === 'BULLISH' ? 'green' : a.newsSentiment === 'BEARISH' ? 'red' : 'slate'}>news {a.newsSentiment.toLowerCase()} ({a.newsCount})</Badge>}
                     <span className="ml-auto text-slate-500">{fmtTime(a.createdAt)}</span>
                   </div>
                   <div className="mt-1 text-slate-300">{a.reason ?? a.error}</div>

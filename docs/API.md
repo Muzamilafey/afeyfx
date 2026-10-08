@@ -54,7 +54,7 @@ Errors look like `{ "error": { "code": "...", "message": "...", "details"?: ... 
 `POST /import-candles` (A) `{symbol,timeframe,days}`
 
 ## AI `/api/ai`
-`GET /status` · `GET /analyses?symbol&kind` · `POST /analyze` (T) `{symbol,timeframe}` · `POST /review/:key` (A, stores proposals only)
+`GET /status` · `GET /news?symbol` (configured feeds only) · `GET /analyses?symbol&kind` · `POST /analyze` (T) `{symbol,timeframe}` · `POST /review/:key` (A, stores proposals only)
 
 ## Risk `/api/risk`
 `GET /` (limits, breaker, exposure, daily/weekly loss) · `GET /events` · `PUT /config` 🔐 (bounded) · `POST /circuit-breaker/reset` 🔐 `{code|'ALL'}`

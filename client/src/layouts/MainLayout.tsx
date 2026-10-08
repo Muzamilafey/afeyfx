@@ -35,16 +35,16 @@ function Shell() {
           </nav>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2">
-            <div className="flex items-center gap-3 text-sm">
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 px-4 py-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
               <ModePill mode={mode} />
               {settings && !settings.tradingEnabled && <span className="rounded bg-amber-600 px-2 py-0.5 text-xs font-bold text-white">NEW TRADES STOPPED</span>}
               <span className={`flex items-center gap-1 text-xs ${connected ? 'text-emerald-400' : 'text-red-400'}`}>
-                <span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-red-500'}`} /> {connected ? 'Live feed' : 'Feed disconnected'}
+                <span className={`h-2 w-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-red-500'}`} /> <span className="hidden sm:inline">{connected ? 'Live feed' : 'Feed disconnected'}</span>
               </span>
             </div>
             <div className="flex items-center gap-3 text-sm text-slate-400">
-              <span>
+              <span className="hidden sm:inline">
                 {user?.email} <span className="text-xs uppercase text-slate-500">({user?.role})</span>
               </span>
               <button className="btn-ghost" onClick={() => void logout()}>
@@ -59,7 +59,7 @@ function Shell() {
               </NavLink>
             ))}
           </nav>
-          <main className="flex-1 p-4">
+          <main className="min-w-0 flex-1 p-3 sm:p-4">
             <Outlet />
           </main>
           <footer className="border-t border-slate-800 px-4 py-2 text-[11px] text-slate-500">Trading involves substantial risk of loss. No strategy, backtest or AI analysis guarantees profit. Past performance does not predict future results.</footer>

@@ -7,6 +7,9 @@ import { circuitBreaker } from '../src/risk/CircuitBreaker';
 import { User } from '../src/models/User';
 import { AuditLogModel } from '../src/models/AuditLog';
 import { SettingsModel } from '../src/models/Settings';
+import { StrategyModel } from '../src/models/Strategy';
+import { BacktestRunModel } from '../src/models/BacktestRun';
+import { BacktestModel } from '../src/models/Backtest';
 import { generateTotpSecret, totp } from '../src/utils/totp';
 import { connectTestDb, clearDb, disconnectTestDb } from './helpers/db';
 import { makeUser, PASSWORD } from './helpers/api';
@@ -246,5 +249,22 @@ describe('protected actions', () => {
     const a = await makeUser(app, 'a@x.io', 'admin', true);
     const other = generateTotpSecret();
     expect((await request(app).post('/api/system/emergency/cancel-orders').set(a.auth).send({ totp: totp(other) })).status).toBe(401);
+  });
+
+  it('strategy promotion requires evidence with real trades and cannot skip stages', async () => {
+    const a = await makeUser(app, 'a@x.io', 'admin', true);
+    await StrategyModel.create({ key: 'momentum', name: 'Momentum', version: '1', stage: 'BACKTEST' });
+    const promote = (stage: string) => request(app).post('/api/strategies/momentum/stage').set(a.auth).send({ totp: a.code(), stage });
+    expect((await promote('LIVE')).status).toBe(409); // cannot skip stages
+    expect((await promote('OUT_OF_SAMPLE')).status).toBe(412); // no backtest
+    const bt = await BacktestModel.create({ strategyKey: 'momentum', symbol: 'BTC/USDT', timeframe: '1h' });
+    await BacktestRunModel.create({ backtest: bt._id, strategyKey: 'momentum', segment: 'FULL', status: 'COMPLETED', metrics: { numberOfTrades: 0 } });
+    expect((await promote('OUT_OF_SAMPLE')).status).toBe(412); // a backtest that never traded proves nothing
+    await BacktestRunModel.create({ backtest: bt._id, strategyKey: 'momentum', segment: 'FULL', status: 'COMPLETED', metrics: { numberOfTrades: 12 } });
+    expect((await promote('OUT_OF_SAMPLE')).status).toBe(200);
+    expect((await promote('PAPER')).status).toBe(412); // needs walk-forward OOS evidence
+    await BacktestRunModel.create({ backtest: bt._id, strategyKey: 'momentum', segment: 'OUT_OF_SAMPLE', status: 'COMPLETED', metrics: { numberOfTrades: 8 } });
+    expect((await promote('PAPER')).status).toBe(200);
+    expect((await promote('APPROVED')).status).toBe(412); // needs 30 paper trades
   });
 });

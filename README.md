@@ -109,6 +109,24 @@ deploy/      nginx site + proxy snippet, mongod.conf, logrotate
 ecosystem.config.cjs   PM2
 ```
 
+## Screenshots
+
+Captured from the running app with headless Chromium (`docs/screenshots/`). The sandbox where these were taken
+can't reach exchanges, so there are no live prices and the stale-data breaker is open. That's the fail-closed
+behaviour working as intended. Backtests use a **synthetic** `SYN/USDT` series, and the results are shown as
+they came out, losses included.
+
+| | |
+|---|---|
+| ![Dashboard](docs/screenshots/04-dashboard.png) | ![Walk-forward](docs/screenshots/06-backtest-walk-forward.png) |
+| Dashboard (PAPER) | Walk-forward backtest |
+| ![Strategies](docs/screenshots/08-strategies.png) | ![Performance](docs/screenshots/09-performance-report.png) |
+| Strategy lifecycle | Profitability report (separated) |
+| ![Admin controls](docs/screenshots/11-admin-controls.png) | ![Emergency 2FA](docs/screenshots/12-emergency-2fa-dialog.png) |
+| Emergency controls & health | Protected action (2FA) |
+| ![Live preflight](docs/screenshots/14-admin-live-preflight.png) | ![Risk](docs/screenshots/15-admin-risk-breaker.png) |
+| Live preflight (blocked) | Risk limits & circuit breaker |
+
 ## Documentation
 
 * [Architecture](docs/ARCHITECTURE.md)

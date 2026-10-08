@@ -15,7 +15,7 @@ const risk = (approved = true) =>
     account: { equity: 10_000, available: 10_000, dayStartEquity: 10_000, weekStartEquity: 10_000 }, openPositions: [],
     market: { bid: 99.99, ask: 100.01, availableLiquidity: 1000, dataAgeMs: 10, maxDataAgeMs: 30_000, minAmount: 0.001 }, circuitBreaker: { open: false, reasons: [] },
   });
-const aiOk = (over = {}) => ({ symbol: 'BTC/USDT', signal: 'LONG' as const, confidence: 0.82, marketRegime: 'TRENDING_UP' as const, riskLevel: 'MEDIUM' as const, reason: 'r', keyRisks: [], dataQualityConcerns: [], ...over });
+const aiOk = (over = {}) => ({ symbol: 'BTC/USDT', signal: 'LONG' as const, confidence: 0.82, marketRegime: 'TRENDING_UP' as const, riskLevel: 'MEDIUM' as const, reason: 'r', keyRisks: [], dataQualityConcerns: [], newsSentiment: 'NONE' as const, ...over });
 const input = (over: Partial<DecisionInput> = {}): DecisionInput => ({
   strategySignal: { action: 'LONG', confidence: 0.75, price: 100, stopLoss: 98, takeProfit: 105, reason: 's', indicators: { price: 100 }, regime: 'TRENDING_UP' },
   strategyValidation: { valid: true, reasons: [] },
@@ -86,6 +86,18 @@ describe('ClaudeService', () => {
     expect((await new ClaudeService(reply({ ...aiOk(), confidence: 7 })).analyzeMarket(input)).status).toBe('ERROR');
     expect((await new ClaudeService(reply({ ...aiOk(), symbol: 'ETH/USDT' })).analyzeMarket(input)).status).toBe('ERROR');
     expect((await new ClaudeService(async () => ({ content: [{ type: 'text', text: 'not json' }], stop_reason: 'end_turn', model: 'm' })).analyzeMarket(input)).status).toBe('ERROR');
+  });
+
+  it('passes news headlines to Claude as data', async () => {
+    let user = '';
+    const svc = new ClaudeService(async (p) => {
+      user = JSON.stringify(p.messages);
+      return reply({ ...aiOk(), newsSentiment: 'BULLISH' })();
+    });
+    const r = await svc.analyzeMarket({ ...input, news: [{ title: 'Bitcoin ETF inflows', source: 'x', publishedAt: new Date().toISOString() }] });
+    expect(user).toContain('Bitcoin ETF inflows');
+    expect(r.data!.newsSentiment).toBe('BULLISH');
+    expect((await AIAnalysisModel.findById(r.analysisId))!.newsCount).toBe(1);
   });
 
   it('handles refusals and truncation', async () => {

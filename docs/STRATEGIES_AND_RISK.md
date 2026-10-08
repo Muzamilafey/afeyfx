@@ -19,7 +19,7 @@ HOLD when there is too little data or the current regime isn't in `allowedRegime
 | Mean Reversion | %B outside the bands + RSI extreme; exit at the middle band | SIDEWAYS, LOW_VOLATILITY |
 | Breakout | Close beyond the prior N-bar high/low with relative volume ≥ 1.5 | SIDEWAYS, LOW_VOL, TRENDING |
 | VWAP | Session (UTC day) VWAP reclaim/loss in the direction of EMA50 | TRENDING, SIDEWAYS |
-| Arbitrage | Cross-exchange; executes only if **net** expected profit > minimum after fees, spread (bid/ask), slippage, latency, liquidity, funding and transfer costs | any (except ABNORMAL) |
+| Arbitrage | Cross-exchange; executes only if **net** expected profit > minimum after fees, spread (bid/ask), slippage, latency, liquidity, funding and transfer costs. Both legs are IOC limit orders. Hedged quantity is booked as one trade into the portfolio P&L; an unhedged remainder trips the breaker and disables the strategy | any (except ABNORMAL) |
 
 All strategies are created **disabled** at the **RESEARCH** stage. Don't enable them all at once.
 
@@ -27,7 +27,7 @@ All strategies are created **disabled** at the **RESEARCH** stage. Don't enable 
 
 `RESEARCH → BACKTEST → OUT_OF_SAMPLE → PAPER → APPROVED → LIVE` (plus `RETIRED`). The server enforces these rules:
 
-* OUT_OF_SAMPLE needs a completed backtest. PAPER needs a completed walk-forward OOS run.
+* OUT_OF_SAMPLE needs a completed backtest with ≥ 5 trades. PAPER needs a completed walk-forward OOS run with ≥ 5 trades.
 * APPROVED needs ≥ 30 paper trades and an admin with 2FA. LIVE needs APPROVED.
 * Any parameter change creates a new `StrategyVersion` and sends LIVE or APPROVED back to PAPER.
 * AI proposals are stored as `StrategyVersion(source=AI_PROPOSAL, status=PROPOSED)`. They are never applied automatically.
@@ -86,6 +86,7 @@ Stops **new** positions. Exits are still allowed so you can always reduce risk.
 | DATABASE_UNAVAILABLE | Mongo disconnect or write failure | automatic |
 | CLOCK_DRIFT | drift vs exchange server time > 1 s | automatic |
 | UNEXPECTED_BALANCE_CHANGE / RECONCILIATION_MISMATCH | reconciliation | human |
+| UNHEDGED_EXPOSURE | arbitrage leg mismatch | human |
 | MANUAL_STOP / EMERGENCY_SHUTDOWN | admin | human |
 
 ## Backtesting

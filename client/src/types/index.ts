@@ -137,6 +137,8 @@ export interface AIAnalysis {
   confidence?: number;
   marketRegime?: string;
   riskLevel?: string;
+  newsSentiment?: string;
+  newsCount?: number;
   reason?: string;
   status: string;
   error?: string;

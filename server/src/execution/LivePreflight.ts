@@ -63,7 +63,7 @@ export async function runLivePreflight(exchange = env.DEFAULT_EXCHANGE, adapter:
     const md = getMarketDataService();
     const ages = md.symbols.map((s) => marketDataCache.dataAgeMs(exchange, s));
     const worst = Math.max(...ages);
-    return [md.isRunning && worst <= env.MARKET_DATA_STALE_MS, `running=${md.isRunning}, worst data age ${Number.isFinite(worst) ? Math.round(worst) : 'n/a'}ms`];
+    return [md.isRunning && worst <= env.MARKET_DATA_STALE_MS, `running=${md.isRunning}, ${Number.isFinite(worst) ? `worst data age ${Math.round(worst)}ms` : 'no market data received'}`];
   });
   await safe(5, 'Risk limits within safe bounds', async () => {
     const r = tradingState.get().risk;

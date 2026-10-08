@@ -10,6 +10,8 @@ const aiAnalysisSchema = new Schema(
     confidence: Number,
     marketRegime: String,
     riskLevel: String,
+    newsSentiment: String,
+    newsCount: Number,
     reason: String,
     output: Schema.Types.Mixed,
     inputSummary: Schema.Types.Mixed,

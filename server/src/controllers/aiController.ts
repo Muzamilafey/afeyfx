@@ -15,6 +15,7 @@ import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 import { TIMEFRAMES } from '../types';
 import { env } from '../config/env';
+import { newsService } from '../services/news/NewsService';
 
 export const aiSchemas = {
   analyze: z.object({ symbol: z.string().regex(/^[A-Z0-9]{2,15}\/[A-Z0-9]{2,15}$/), timeframe: z.enum(TIMEFRAMES).default('1h') }),
@@ -23,7 +24,7 @@ export const aiSchemas = {
 export const aiController = {
   status(_req: Request, res: Response) {
     const s = tradingState.get().ai;
-    res.json({ enabled: s.enabled, configured: !!env.ANTHROPIC_API_KEY, available: getClaudeService().available, model: s.model, minConfidence: s.minConfidence, requireAgreement: s.requireAgreement });
+    res.json({ newsConfigured: newsService.configured, enabled: s.enabled, configured: !!env.ANTHROPIC_API_KEY, available: getClaudeService().available, model: s.model, minConfidence: s.minConfidence, requireAgreement: s.requireAgreement });
   },
 
   /** On-demand analysis for the dashboard. Produces analysis only - never orders. */
@@ -47,9 +48,15 @@ export const aiController = {
       volatility: regime.metrics.atrPct,
       recentCandles: candles.slice(-30).map((c) => ({ t: new Date(c.timestamp).toISOString(), o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume })),
       openPositions: open.map((p) => ({ symbol: p.symbol, direction: p.direction, entryPrice: p.entryPrice, unrealizedPnl: p.unrealizedPnl ?? 0 })),
+      news: await newsService.headlines(symbol),
       dataAgeMs: marketDataCache.dataAgeMs(env.DEFAULT_EXCHANGE, symbol),
     });
     res.json(r);
+  },
+
+  async news(req: Request, res: Response) {
+    const symbol = String(req.query.symbol ?? 'BTC/USDT');
+    res.json({ configured: newsService.configured, symbol, items: await newsService.headlines(symbol, 20) });
   },
 
   async list(req: Request, res: Response) {

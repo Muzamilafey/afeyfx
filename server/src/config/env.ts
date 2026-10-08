@@ -95,6 +95,10 @@ const schema = z.object({
   PAPER_LATENCY_MS: num(150),
   PAPER_REJECT_RATE: num(0.01),
 
+  NEWS_ENABLED: bool(false),
+  NEWS_RSS_URLS: z.string().default(''),
+  NEWS_MAX_AGE_HOURS: num(24),
+
   TELEGRAM_BOT_TOKEN: z.string().default(''),
   TELEGRAM_CHAT_ID: z.string().default(''),
 

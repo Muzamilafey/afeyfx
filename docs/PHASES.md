@@ -18,10 +18,11 @@ Each phase was followed by: tests → fixes → log check → functional verific
 | 12 | Live trading infrastructure | `LiveTradingGuard`, 10-check preflight, activation flow, reconciliation, protective stops, idempotent and verified execution | `liveTradingProtection.test.ts`, `execution.test.ts` |
 | 13 | Security audit | See SECURITY.md (npm audit clean, findings table) | CI audit step |
 | 14 | Production deployment | PM2, Nginx, HTTPS, scripts, runbooks | `bash -n` on scripts; `deploy.sh` gates on tests |
+| 15 | Completion pass | Arbitrage P&L accounting with legging protection; RSS/Atom news input and AI news sentiment; promotion gates require backtests with ≥5 trades; testnet status fallback; responsive header; screenshot set | `arbitrage.test.ts`, `news.test.ts`, stage-gate API test, headless-Chromium walkthrough (`docs/screenshots/`) |
 
 ## Test summary
 
-* Server: 16 suites, 177 tests, all passing, run against a real `mongod`
+* Server: 18 suites, 188 tests, all passing, run against a real `mongod`
   (`MONGODB_TEST_URI` or mongodb-memory-server).
 * Client: 5 component and utility tests, typecheck, production build.
 
@@ -34,10 +35,13 @@ Each phase was followed by: tests → fixes → log check → functional verific
 * Coinbase Advanced Trade has no spot sandbox. Permission verification relies on the key-permissions endpoint.
 * Accounting assumes **spot** trading. Shorting is disabled by default. Derivatives positions are read by
   reconciliation but haven't been tested end to end.
-* **News/sentiment:** the AI input schema accepts a `news` array, but no news provider is wired in, because no reliable
-  source was specified. Add one only with a trustworthy feed, and keep treating its text as untrusted data.
-* **Arbitrage** handles detection, cost modelling and two-leg order placement on pre-funded venues. Legging risk is real, and
-  arbitrage fills are not yet folded into the portfolio P&L. Treat it as experimental and keep it in PAPER.
+* **News/sentiment** comes only from RSS/Atom feeds that you configure (`NEWS_ENABLED`, `NEWS_RSS_URLS`). It is off by default.
+  Headlines are sanitized, must be dated and recent, are filtered by symbol, and are passed to Claude as untrusted data.
+  Claude reports a `newsSentiment` that is shown on the dashboard and stored with each analysis. Pick feeds you trust;
+  the platform can't vouch for their accuracy.
+* **Arbitrage** sends both legs as IOC limit orders on pre-funded venues. The hedged quantity is booked as one trade, and its
+  net P&L (after fees) goes into the portfolio. A partial or one-sided fill trips `UNHEDGED_EXPOSURE` (manual reset),
+  disables the strategy and sends an alert. Legging risk can't be removed entirely, so keep it in PAPER until you've tested it on testnet.
 * Jobs use in-process node-cron in a single PM2 instance. BullMQ + Redis wasn't needed at this scale.
 * A TOTP code can be replayed within its ±30 s window (an accepted risk; see SECURITY.md).
 * Synthetic random-walk backtests lose money after costs, which is the expected behaviour for strategies with no edge.

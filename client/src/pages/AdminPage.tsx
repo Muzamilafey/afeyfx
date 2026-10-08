@@ -235,7 +235,7 @@ function RiskAdmin() {
 }
 
 function AiAdmin() {
-  const status = useApi<{ enabled: boolean; configured: boolean; available: boolean; model: string; minConfidence: number; requireAgreement: boolean }>('/ai/status');
+  const status = useApi<{ newsConfigured: boolean; enabled: boolean; configured: boolean; available: boolean; model: string; minConfidence: number; requireAgreement: boolean }>('/ai/status');
   const [model, setModel] = useState('');
   const [minConf, setMinConf] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +254,7 @@ function AiAdmin() {
       {s && (
         <div className="space-y-3 text-sm">
           <div>API key configured: {s.configured ? <Badge color="green">yes</Badge> : <Badge color="red">no (set ANTHROPIC_API_KEY on the server)</Badge>}</div>
+          <div>News feeds: {s.newsConfigured ? <Badge color="green">configured</Badge> : <Badge color="slate">off (NEWS_ENABLED + NEWS_RSS_URLS)</Badge>}</div>
           <div className="flex items-center gap-2">
             Enabled: <Badge color={s.enabled ? 'green' : 'slate'}>{String(s.enabled)}</Badge>
             <button className="btn-ghost text-xs" onClick={() => void save({ enabled: !s.enabled })}>{s.enabled ? 'Disable' : 'Enable'}</button>

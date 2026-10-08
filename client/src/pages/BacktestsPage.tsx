@@ -16,7 +16,7 @@ export function BacktestsPage() {
   const list = useApi<{ backtests: Backtest[] }>('/backtests');
   const [selected, setSelected] = useState<string | null>(null);
   const detail = useApi<{ backtest: Backtest; runs: BacktestRun[] }>(selected ? `/backtests/${selected}` : null, [selected]);
-  const [form, setForm] = useState({ strategyKey: 'trend-following', symbol: 'BTC/USDT', timeframe: '1h', type: 'SIMPLE' as 'SIMPLE' | 'WALK_FORWARD', params: '{}', paramGrid: '{"adxMin":[20,25,30]}', feeRate: 0.001, slippagePct: 0.0005, spreadPct: 0.0005, startingBalance: 10000, trainBars: 1000, validationBars: 300, testBars: 300 });
+  const [form, setForm] = useState({ strategyKey: 'trend-following', symbol: 'BTC/USDT', timeframe: '1h', type: 'SIMPLE' as 'SIMPLE' | 'WALK_FORWARD', params: '{}', paramGrid: '{"adxMin":[20,25,30]}', feeRate: 0.001, slippagePct: 0.0005, spreadPct: 0.0005, startingBalance: 10000, trainBars: 1000, validationBars: 300, testBars: 300, minTrainTrades: 10 });
   const [error, setError] = useState<string | null>(null);
   const [importDays, setImportDays] = useState(365);
   const [info, setInfo] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export function BacktestsPage() {
           timeframe: form.timeframe,
           type: form.type,
           params: JSON.parse(form.params || '{}'),
-          config: { feeRate: Number(form.feeRate), slippagePct: Number(form.slippagePct), spreadPct: Number(form.spreadPct), startingBalance: Number(form.startingBalance), trainBars: Number(form.trainBars), validationBars: Number(form.validationBars), testBars: Number(form.testBars), paramGrid: JSON.parse(form.paramGrid || '{}') },
+          config: { feeRate: Number(form.feeRate), slippagePct: Number(form.slippagePct), spreadPct: Number(form.spreadPct), startingBalance: Number(form.startingBalance), trainBars: Number(form.trainBars), validationBars: Number(form.validationBars), testBars: Number(form.testBars), minTrainTrades: Number(form.minTrainTrades), paramGrid: JSON.parse(form.paramGrid || '{}') },
         },
       });
       setSelected(r.backtest._id);
@@ -88,6 +88,7 @@ export function BacktestsPage() {
                   <div><label className="label">Train bars</label><input className="input" type="number" value={form.trainBars} onChange={set('trainBars')} /></div>
                   <div><label className="label">Validation bars</label><input className="input" type="number" value={form.validationBars} onChange={set('validationBars')} /></div>
                   <div><label className="label">OOS bars</label><input className="input" type="number" value={form.testBars} onChange={set('testBars')} /></div>
+                  <div><label className="label">Min train trades</label><input className="input" type="number" value={form.minTrainTrades} onChange={set('minTrainTrades')} /></div>
                   <div className="col-span-2"><label className="label">Param grid (JSON)</label><input className="input font-mono text-xs" value={form.paramGrid} onChange={set('paramGrid')} /></div>
                 </>
               )}
