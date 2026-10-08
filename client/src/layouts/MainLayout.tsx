@@ -14,6 +14,9 @@ const NAV = [
   { to: '/admin/backtests', label: 'Backtests' },
   { to: '/admin/performance', label: 'Performance' },
   { to: '/admin/system', label: 'System & Risk' },
+  { to: '/admin/payments', label: 'Payments' },
+  { to: '/admin/brokers', label: 'Brokers' },
+  { to: '/admin/integrations', label: 'Integrations' },
   { to: '/admin/settings', label: 'Account & 2FA' },
 ];
 

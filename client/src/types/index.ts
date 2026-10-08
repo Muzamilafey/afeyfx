@@ -1,4 +1,6 @@
-export type Mode = 'PAPER' | 'LIVE';
+export type Mode = 'PAPER' | 'LIVE' | 'REAL';
+export type AccountType = 'DEMO' | 'REAL';
+export type MarketCategory = 'crypto' | 'forex' | 'metals';
 export type Role = 'admin' | 'trader' | 'viewer';
 
 export interface User {
@@ -29,7 +31,63 @@ export interface AuthConfig {
 }
 
 export interface DemoAccount extends Portfolio {
-  type: 'DEMO';
+  type: AccountType;
+}
+export type TraderAccount = DemoAccount;
+
+export interface Features {
+  email: boolean;
+  googleSignIn: boolean;
+  githubSignIn: boolean;
+  ai: boolean;
+  telegram: boolean;
+  news: boolean;
+  forex: boolean;
+  deposits: boolean;
+  payouts: boolean;
+  realTrading: boolean;
+  realAccount: boolean;
+}
+
+export type PaymentStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'REJECTED' | 'CANCELLED' | 'UNCERTAIN';
+export interface Payment {
+  id: string;
+  user: string;
+  reference: string;
+  type: 'DEPOSIT' | 'PAYOUT';
+  method: string;
+  status: PaymentStatus;
+  amount: number;
+  fee: number;
+  net: number;
+  amountKes: number;
+  rate: number;
+  phone: string;
+  receipt: string | null;
+  message: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  // admin view
+  userEmail?: string;
+  firstName?: string;
+  lastName?: string;
+  provider?: string;
+  resultCode?: string;
+  resultDesc?: string;
+  knownDestination?: boolean;
+  credited?: boolean;
+  held?: boolean;
+  refunded?: boolean;
+  reviewNote?: string;
+}
+
+export interface PaymentPublicConfig {
+  currency: string;
+  methods: { id: string; name: string; instant: boolean }[];
+  deposits: { enabled: boolean; minUsd: number; maxUsd: number; rate: number };
+  payouts: { enabled: boolean; minUsd: number; maxUsd: number; dailyLimitUsd: number; rate: number; feePct: number; feeFixedUsd: number; depositPhonesOnly: boolean };
+  realTradingEnabled: boolean;
+  sandbox: boolean;
 }
 
 export interface Candle {
@@ -53,6 +111,12 @@ export interface MarketSummary {
   volatility?: number;
   dataAgeMs: number;
   unavailable?: boolean;
+  category?: MarketCategory;
+  name?: string;
+  base?: string;
+  quote?: string;
+  pricePrecision?: number;
+  marketOpen?: boolean;
 }
 
 export interface Portfolio {
@@ -90,6 +154,10 @@ export interface Position {
   realizedPnl: number;
   strategyKey?: string;
   openedAt: string;
+  exchange?: string;
+  /** USD per quote-currency unit at entry (1 for USD/USDT pairs). */
+  quoteRate?: number;
+  broker?: string;
 }
 
 export interface Trade {
@@ -110,6 +178,8 @@ export interface Trade {
   exitReason: string;
   openedAt: string;
   closedAt: string;
+  quoteRate?: number;
+  broker?: string;
 }
 
 export interface Order {

@@ -220,6 +220,8 @@ export class IntegrationService {
       feature: g.feature,
       docsUrl: g.docsUrl,
       configured: this.isConfigured(g),
+      /** Some, but not all, required keys are set. */
+      partial: !this.isConfigured(g) && g.required.some((k) => String(env[k] ?? '') !== ''),
       fields: g.fields.map((f) => {
         const v = env[f.key];
         const set = v !== undefined && v !== null && String(v) !== '';

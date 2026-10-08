@@ -73,7 +73,7 @@ export const exchangeController = {
           active: true,
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
     const { adapter: priv } = await adapterFromStoredCredential(doc._id.toString());
     exchangeRegistry.setPrivate(b.exchange, priv);

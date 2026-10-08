@@ -89,3 +89,39 @@ describe('formatting', () => {
     expect(pnlClass(1)).toContain('emerald');
   });
 });
+
+describe('payments & markets UI', () => {
+  it('hides Withdrawal and Payments tabs until the admin enables them', async () => {
+    const { MemoryRouter } = await import('react-router-dom');
+    const features = await import('../src/hooks/useFeatures');
+    const { AccountTabs } = await import('../src/components/AccountTabs');
+    const base = { email: false, googleSignIn: false, githubSignIn: false, ai: false, telegram: false, news: false, forex: false, deposits: false, payouts: false, realTrading: false, realAccount: false };
+    const spy = vi.spyOn(features, 'useFeatures').mockReturnValue({ features: base, loaded: true, reload: async () => undefined });
+    const { unmount } = render(<MemoryRouter><AccountTabs /></MemoryRouter>);
+    expect(screen.queryByText('Withdrawal')).toBeNull();
+    expect(screen.queryByText('Payments')).toBeNull();
+    expect(screen.getByText('Trades')).toBeInTheDocument();
+    unmount();
+    spy.mockReturnValue({ features: { ...base, deposits: true, payouts: true, realAccount: true }, loaded: true, reload: async () => undefined });
+    render(<MemoryRouter><AccountTabs /></MemoryRouter>);
+    expect(screen.getByText('Withdrawal')).toBeInTheDocument();
+    expect(screen.getByText('Payments')).toBeInTheDocument();
+  });
+
+  it('draws two flags for forex pairs, a coin for metals and a badge for crypto', async () => {
+    const { MarketIcon } = await import('../src/components/MarketIcon');
+    const { container: fx } = render(<MarketIcon symbol="EUR/USD" />);
+    expect(fx.querySelectorAll('svg')).toHaveLength(2);
+    const { container: gold } = render(<MarketIcon symbol="XAU/USD" />);
+    expect(gold.textContent).toContain('Au');
+    const { container: btc } = render(<MarketIcon symbol="BTC/USDT" />);
+    expect(btc.textContent).toBe('BTC');
+  });
+
+  it('formats prices with instrument precision', async () => {
+    const { fmtPriceDp, fmtUsd } = await import('../src/utils/format');
+    expect(fmtPriceDp(1.0862134, 5)).toBe('1.08621');
+    expect(fmtPriceDp(155.4567, 3)).toBe('155.457');
+    expect(fmtUsd(-12.5)).toBe('-$12.50');
+  });
+});

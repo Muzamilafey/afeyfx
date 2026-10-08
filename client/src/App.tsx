@@ -14,6 +14,12 @@ import { TradePage } from './pages/trader/TradePage';
 import { MarketsPage } from './pages/trader/MarketsPage';
 import { HistoryPage } from './pages/trader/HistoryPage';
 import { AccountPage } from './pages/trader/AccountPage';
+import { WithdrawalPage } from './pages/trader/WithdrawalPage';
+import { PaymentsPage } from './pages/trader/PaymentsPage';
+import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
+import { AdminBrokersPage } from './pages/admin/AdminBrokersPage';
+import { AdminIntegrationsPage } from './pages/admin/AdminIntegrationsPage';
+import { FeaturesProvider } from './hooks/useFeatures';
 import { DashboardPage } from './pages/DashboardPage';
 import { TradesPage } from './pages/TradesPage';
 import { StrategiesPage } from './pages/StrategiesPage';
@@ -65,22 +71,27 @@ export default function App() {
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 
-              <Route path="/admin" element={<RequireAdmin><MainLayout /></RequireAdmin>}>
+              <Route path="/admin" element={<RequireAdmin><FeaturesProvider><MainLayout /></FeaturesProvider></RequireAdmin>}>
                 <Route index element={<DashboardPage />} />
                 <Route path="trades" element={<TradesPage />} />
                 <Route path="strategies" element={<StrategiesPage />} />
                 <Route path="backtests" element={<BacktestsPage />} />
                 <Route path="performance" element={<PerformancePage />} />
                 <Route path="system" element={<AdminPage />} />
+                <Route path="payments" element={<AdminPaymentsPage />} />
+                <Route path="brokers" element={<AdminBrokersPage />} />
+                <Route path="integrations" element={<AdminIntegrationsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="*" element={<Navigate to="/admin" replace />} />
               </Route>
 
-              <Route element={<RequireUser><TraderLayout /></RequireUser>}>
+              <Route element={<RequireUser><FeaturesProvider><TraderLayout /></FeaturesProvider></RequireUser>}>
                 <Route index element={<TradePage />} />
                 <Route path="markets" element={<MarketsPage />} />
                 <Route path="history" element={<HistoryPage />} />
                 <Route path="account" element={<AccountPage />} />
+                <Route path="withdrawal" element={<WithdrawalPage />} />
+                <Route path="payments" element={<PaymentsPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

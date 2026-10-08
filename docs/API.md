@@ -29,6 +29,33 @@ Errors look like `{ "error": { "code": "...", "message": "...", "details"?: ... 
 `GET /` (account + user) · `POST /orders` `{symbol,direction:'LONG'|'SHORT',investment,stopLossPct,takeProfitPct?,idempotencyKey?}` ·
 `GET /positions?status=OPEN|CLOSED` · `POST /positions/:id/close` · `GET /history` · `GET /performance` · `POST /demo/reset` (only when flat)
 
+Account endpoints take `?account=DEMO|REAL` (default DEMO); `GET /api/account` returns both accounts. Orders take
+`account: "DEMO" | "REAL"`. REAL orders need the admin's real-trading switch and real market data.
+
+## Payments `/api/payments` (traders; mutations need a verified email)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/config` | Methods, limits, KES rates, fees, what is enabled (no credentials) |
+| GET | `/` `?type=DEPOSIT\|PAYOUT` | Own transactions |
+| GET | `/:id` | One own transaction |
+| POST | `/deposits` | `{amount, phone, idempotencyKey}` → STK Push; status follows via Socket.IO `payment` |
+| POST | `/payouts` | `{amount, phone, firstName, lastName, idempotencyKey, totp \| emailCode}`; funds held |
+| POST | `/payouts/:id/cancel` | Only while pending; refunds the hold |
+| POST | `/mpesa/stk/:token`, `/mpesa/b2c/result/:token`, `/mpesa/b2c/timeout/:token` | Daraja callbacks (public, secret token) |
+
+## Admin payments `/api/admin/payments` (A; P = protected action with a fresh 2FA code)
+`GET /config` · `PUT /config` (P) · `POST /config/test` · `GET /stats` · `GET /` `?type&status&q` ·
+`POST /:id/approve` (P) · `POST /:id/reject` (P, `{note}`) · `POST /:id/resolve` (P, `{outcome, note, receipt?}`) · `POST /:id/requery`
+
+## Brokers `/api/admin/brokers` (A)
+`GET /` (routes, broker status, kill-switch state) · `PUT /deriv` (P, `{appId, token, multipliers}`) ·
+`POST /:id/test` · `PUT /routes` (P, `{category: crypto|forex|metals, route: internal|deriv|oanda}`)
+
+## Integrations `/api/admin/integrations` (A) and features
+`GET /` (groups, masked secrets, sources, env-only list) · `PUT /` (P, `{values: {KEY: value}, reset: [KEY]}`) ·
+`POST /:id/test` (email, anthropic, telegram, oanda, news, google, github).
+`GET /api/features` (any signed-in user): which features are configured, so the UI can hide the rest.
+
 ## Users `/api/users` (A)
 `GET /` · `POST /` `{email,name,password,role}` · `PATCH /:id` `{role?,active?,name?}`
 
@@ -86,5 +113,8 @@ Errors look like `{ "error": { "code": "...", "message": "...", "details"?: ... 
 | POST | `/live/disable` | A (always allowed) |
 
 ## Socket.IO
+
+Additional events: `candle-live` (the forming candle on every update, all users), `payment` (owner + admins).
+
 Connect to `/socket.io` with `auth: { token: <accessToken> }`. Events: `price` (throttled to 4/s per symbol), `candle`,
 `signal`, `order`, `trade`, `position`, `portfolio`, `risk`, `exchange-status`, `ai-analysis`, `system`.

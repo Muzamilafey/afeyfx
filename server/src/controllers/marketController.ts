@@ -32,7 +32,7 @@ export const marketController = {
     res.json({ markets: await Market.find().sort({ symbol: 1 }).lean() });
   },
   async update(req: Request, res: Response) {
-    const m = await Market.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    const m = await Market.findByIdAndUpdate(req.params.id, { $set: req.body }, { returnDocument: 'after' });
     if (!m) throw new AppError(404, 'Market not found');
     await audit(req, { action: 'MARKET_UPDATED', resource: 'market', resourceId: m._id.toString(), details: req.body });
     res.json({ market: m });

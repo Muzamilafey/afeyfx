@@ -60,7 +60,7 @@ export const EmailTokenService = {
 
   async verifyEmail(userId: string, token: string) {
     if (!/^[a-f0-9]{24}$/i.test(userId) || !(await consume(userId, 'VERIFY_EMAIL', token))) throw new AppError(400, 'Verification link is invalid or has expired', 'INVALID_VERIFICATION');
-    const user = await User.findByIdAndUpdate(userId, { $set: { emailVerified: true, emailVerifiedAt: new Date() } }, { new: true });
+    const user = await User.findByIdAndUpdate(userId, { $set: { emailVerified: true, emailVerifiedAt: new Date() } }, { returnDocument: 'after' });
     if (!user) throw new AppError(400, 'Verification link is invalid or has expired', 'INVALID_VERIFICATION');
     return user;
   },

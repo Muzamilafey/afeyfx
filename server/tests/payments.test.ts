@@ -9,6 +9,7 @@ import { PaymentConfigModel } from '../src/models/PaymentConfig';
 import { PaymentModel } from '../src/models/PaymentTransaction';
 import { PortfolioModel } from '../src/models/Portfolio';
 import { EmailTokenModel } from '../src/models/EmailToken';
+import { User } from '../src/models/User';
 import { mailService, type MailMessage } from '../src/services/MailService';
 import { marketDataCache } from '../src/marketData/MarketDataCache';
 import { orderExecutionService } from '../src/execution/OrderExecutionService';
@@ -288,6 +289,9 @@ describe('M-Pesa deposits', () => {
     expect((await send(20)).body.error.code).toBe('TOO_MANY_PENDING');
     const v = await makeUser(app, 'unverified@x.io', 'trader', false, false);
     expect((await request(app).post('/api/payments/deposits').set(v.auth).send({ amount: 20, phone: PHONE, idempotencyKey: 'abcdefgh' })).body.error.code).toBe('EMAIL_NOT_VERIFIED');
+    // Verified after the token was issued: the stale token is re-checked against the database.
+    await User.updateOne({ email: 'unverified@x.io' }, { $set: { emailVerified: true } });
+    expect((await request(app).post('/api/payments/deposits').set(v.auth).send({ amount: 20, phone: PHONE, idempotencyKey: 'abcdefgh' })).status).toBe(201);
   });
 
   it('an STK push with no definite answer is held for review, never silently failed or credited', async () => {

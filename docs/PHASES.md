@@ -20,12 +20,13 @@ Each phase was followed by: tests → fixes → log check → functional verific
 | 14 | Production deployment | PM2, Nginx, HTTPS, scripts, runbooks | `bash -n` on scripts; `deploy.sh` gates on tests |
 | 15 | Completion pass | Arbitrage P&L accounting with legging protection; RSS/Atom news input and AI news sentiment; promotion gates require backtests with ≥5 trades; testnet status fallback; responsive header; screenshot set | `arbitrage.test.ts`, `news.test.ts`, stage-gate API test, headless-Chromium walkthrough (`docs/screenshots/`) |
 | 16 | Accounts, sign-in & trader terminal | Email verification; email-code 2FA; Continue with Google/GitHub; trader sign-up and separate admin portal; personal demo accounts; chart-first trader terminal; light/dark theme; dev-only simulated feed | `authExtended.test.ts`, `demoAccount.test.ts`, websocket routing test, full headless-browser walkthrough (sign-up → email verification → trades → email 2FA → admin console) |
+| 17 | Real money, markets & brokers | M-Pesa deposits (STK Push + query confirmation) and withdrawals (B2C, held funds, admin approval, review queue); REAL accounts; forex (41 pairs) + metals via OANDA with USD conversion; 18 crypto pairs; tick-by-tick candles; admin Integrations (all .env keys, hidden features); broker routing (Deriv, OANDA) behind the live kill switch | `payments.test.ts`, `forex.test.ts`, `brokers.test.ts`, `integrations.test.ts`, headless-browser walkthrough (admin setup → integrations → M-Pesa config → deposit → forex trading → withdrawal → admin approval) |
 
 ## Test summary
 
-* Server: 20 suites, 222 tests, all passing, run against a real `mongod`
+* Server: 24 suites, 262 tests, all passing, run against a real `mongod`
   (`MONGODB_TEST_URI` or mongodb-memory-server).
-* Client: 8 component and utility tests, typecheck, production build.
+* Client: 11 component and utility tests, typecheck, production build.
 
 ## Known limitations (be aware before trading)
 
@@ -47,6 +48,11 @@ Each phase was followed by: tests → fixes → log check → functional verific
 * An authenticator (TOTP) code can be replayed within its ±30 s window (an accepted risk; email codes are single-use; see SECURITY.md).
 * Google/GitHub sign-in was tested with mocked provider endpoints and checked up to the provider redirect.
   Register real OAuth apps (callback URLs in `.env.example`) and test the full round trip before relying on it.
-* Personal accounts are demo (PAPER) only. Live trading stays a single, admin-controlled system account.
+* **M-Pesa** was tested against mocked Daraja endpoints and the built-in simulated provider. Run the Daraja
+  **sandbox** end to end (deposit, cancel, wrong PIN, payout, timeout) with your shortcode before production.
+* **Deriv and OANDA execution** was tested with mocked broker responses only. Use a Deriv demo (VRTC) account and
+  an OANDA practice account first. Deriv sizing uses Multiplier contracts (stake = investment ÷ multiplier).
+* Forex prices need OANDA credentials; without them forex/metals are hidden. Weekend sessions are closed.
+* P&L for pairs quoted in another currency is converted at the live rate at close; collateral uses the entry rate.
 * Synthetic random-walk backtests lose money after costs, which is the expected behaviour for strategies with no edge.
   None of the bundled strategies has been shown to be profitable on real data. Treat them as starting points for research.

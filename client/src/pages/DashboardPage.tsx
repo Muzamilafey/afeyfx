@@ -7,6 +7,7 @@ import { useAuth, canTrade } from '../hooks/useAuth';
 import { useTradingStatus } from '../hooks/useTradingStatus';
 import { api } from '../services/api';
 import { fmtNum, fmtPct, fmtPrice, fmtSigned, fmtTime, pnlClass } from '../utils/format';
+import { useFeatures } from '../hooks/useFeatures';
 import type { AIAnalysis, Candle, MarketSummary, Portfolio, Position, RiskStatus, Signal, Trade } from '../types';
 
 interface MarketAnalysisResp {
@@ -23,7 +24,8 @@ export function DashboardPage() {
   const positions = useApi<{ positions: Position[] }>(`/positions?mode=${mode}`, [mode]);
   const trades = useApi<{ trades: Trade[] }>(`/trades?mode=${mode}&limit=15`, [mode]);
   const risk = useApi<RiskStatus>('/risk');
-  const analyses = useApi<{ analyses: AIAnalysis[] }>('/ai/analyses?kind=MARKET&limit=5');
+  const { features } = useFeatures();
+  const analyses = useApi<{ analyses: AIAnalysis[] }>(features.ai ? '/ai/analyses?kind=MARKET&limit=5' : null, [features.ai]);
   const signals = useApi<{ signals: Signal[] }>(`/signals?mode=${mode}&limit=10`, [mode]);
 
   const symbols = markets.data?.markets.map((m) => m.symbol) ?? [];
@@ -268,7 +270,8 @@ export function DashboardPage() {
           )}
         </Card>
 
-        {/* AI ANALYSIS */}
+        {/* AI ANALYSIS (only when an Anthropic key is configured) */}
+        {features.ai && (
         <Card
           title="AI analysis"
           actions={
@@ -302,6 +305,7 @@ export function DashboardPage() {
             <Empty>{settings?.ai.enabled ? 'No analyses yet' : 'AI analysis disabled'}</Empty>
           )}
         </Card>
+        )}
       </div>
 
       <Card title="Latest strategy signals">

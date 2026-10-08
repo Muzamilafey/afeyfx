@@ -38,7 +38,7 @@ export const userController = {
     const set: Record<string, unknown> = { ...req.body };
     if (req.body.emailVerified === true) set.emailVerifiedAt = new Date();
     if (req.body.emailVerified === false) set.emailOtpEnabled = false; // email codes need a verified inbox
-    const u = await User.findByIdAndUpdate(req.params.id, { $set: set }, { new: true });
+    const u = await User.findByIdAndUpdate(req.params.id, { $set: set }, { returnDocument: 'after' });
     if (!u) throw new AppError(404, 'User not found');
     if (req.body.active === false || req.body.role || req.body.emailVerified !== undefined) await RefreshToken.updateMany({ user: u._id, revokedAt: null }, { $set: { revokedAt: new Date() } });
     await audit(req, { action: 'USER_UPDATED', resource: 'user', resourceId: u._id.toString(), details: req.body });

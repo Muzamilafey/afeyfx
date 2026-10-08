@@ -6,6 +6,7 @@ import { AuthService } from '../services/AuthService';
 import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { eventBus } from '../utils/eventBus';
 
 const money = z.number().positive().max(1_000_000).refine((n) => Math.abs(Math.round(n * 100) - n * 100) < 1e-6, 'At most 2 decimal places');
 const name = z.string().trim().min(1).max(60).regex(/^[\p{L} .'-]+$/u, 'Letters only');
@@ -57,7 +58,7 @@ export const paymentSchemas = {
     })
     .partial(),
   reject: z.object({ note: z.string().trim().min(3).max(300), totp: z.string().optional(), emailCode: z.string().optional() }),
-  resolve: z.object({ outcome: z.enum(['COMPLETED', 'FAILED']), note: z.string().trim().min(3).max(300), receipt: z.string().trim().regex(/^[A-Z0-9]{6,20}$/).optional(), totp: z.string().optional(), emailCode: z.string().optional() }),
+  resolve: z.object({ outcome: z.enum(['COMPLETED', 'FAILED']), note: z.string().trim().min(3).max(300), receipt: z.union([z.literal(''), z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6,20}$/)]).optional(), totp: z.string().optional(), emailCode: z.string().optional() }),
 };
 
 const me = (req: Request) => req.user!.id;
@@ -117,6 +118,7 @@ export const adminPaymentController = {
     const { totp: _t, emailCode: _e, ...body } = req.body as Record<string, unknown>;
     const cfg = await paymentService.updateConfig(body, req.user!.id);
     const changed = Object.keys(body).map((k) => (/(key|secret|passkey|credential)/i.test(k) ? `${k} (changed)` : k));
+    eventBus.publish('system', { kind: 'features' });
     await audit(req, { action: 'PAYMENT_CONFIG_UPDATED', details: { fields: changed, depositsEnabled: cfg.depositsEnabled, payoutsEnabled: cfg.payoutsEnabled, realTradingEnabled: cfg.realTradingEnabled, environment: cfg.environment } });
     res.json(cfg);
   },
@@ -155,7 +157,7 @@ export const adminPaymentController = {
 
   async resolve(req: Request, res: Response) {
     const b = req.body as z.infer<typeof paymentSchemas.resolve>;
-    const t = await paymentService.resolve(req.user!.id, String(req.params.id), b.outcome, b.note, b.receipt);
+    const t = await paymentService.resolve(req.user!.id, String(req.params.id), b.outcome, b.note, b.receipt || undefined);
     await audit(req, { action: 'PAYMENT_RESOLVED', resourceId: String(req.params.id), details: { reference: t?.reference, outcome: b.outcome, receipt: b.receipt, note: b.note } });
     res.json({ payment: t && paymentService.adminView(t as never) });
   },

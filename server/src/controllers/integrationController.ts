@@ -16,6 +16,7 @@ import { emailHtml, mailService } from '../services/MailService';
 import { newsService } from '../services/news/NewsService';
 import { AppError } from '../utils/errors';
 import { errorMessage } from '../utils/logger';
+import { eventBus } from '../utils/eventBus';
 
 const keys = INTEGRATION_GROUPS.flatMap((g) => g.fields.map((f) => f.key)) as [string, ...string[]];
 
@@ -60,6 +61,7 @@ export const integrationController = {
   async update(req: Request, res: Response) {
     const b = req.body as z.infer<typeof integrationSchemas.update>;
     const changed = await integrationService.update(b.values, b.reset, req.user!.id);
+    eventBus.publish('system', { kind: 'features' });
     await audit(req, { action: 'INTEGRATIONS_UPDATED', details: { changed } });
     res.json({ changed, groups: integrationService.view() });
   },

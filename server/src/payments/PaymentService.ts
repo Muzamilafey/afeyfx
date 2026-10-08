@@ -86,7 +86,7 @@ export class PaymentService {
 
   async config(): Promise<PaymentConfigDoc> {
     let c = await PaymentConfigModel.findOne({ key: 'mpesa' });
-    if (!c) c = await PaymentConfigModel.findOneAndUpdate({ key: 'mpesa' }, { $setOnInsert: { key: 'mpesa', callbackToken: randomToken(24) } }, { upsert: true, new: true });
+    if (!c) c = await PaymentConfigModel.findOneAndUpdate({ key: 'mpesa' }, { $setOnInsert: { key: 'mpesa', callbackToken: randomToken(24) } }, { upsert: true, returnDocument: 'after' });
     if (!c!.callbackToken) {
       c!.callbackToken = randomToken(24);
       await c!.save();
@@ -443,7 +443,7 @@ export class PaymentService {
 
   private async creditDeposit(t: PaymentDoc, by?: string) {
     // Claim the credit atomically: only one caller can flip credited=false -> true.
-    const claimed = await PaymentModel.findOneAndUpdate({ _id: t._id, credited: false, status: { $in: ['PENDING', 'UNCERTAIN'] } }, { $set: { status: 'COMPLETED', credited: true, completedAt: new Date(), resultCode: '0', ...(by ? { reviewedBy: by, reviewedAt: new Date() } : {}) } }, { new: true });
+    const claimed = await PaymentModel.findOneAndUpdate({ _id: t._id, credited: false, status: { $in: ['PENDING', 'UNCERTAIN'] } }, { $set: { status: 'COMPLETED', credited: true, completedAt: new Date(), resultCode: '0', ...(by ? { reviewedBy: by, reviewedAt: new Date() } : {}) } }, { returnDocument: 'after' });
     if (!claimed) return PaymentModel.findById(t._id);
     const ok = await portfolioService.applyCashFlow(claimed.user.toString(), usd(claimed.amountCents));
     if (!ok) {
@@ -458,7 +458,7 @@ export class PaymentService {
 
   /** Move a transaction from one of `from` to `to` (atomic); refund held payout funds on definite failure. */
   private async finish(t: PaymentDoc, from: PaymentStatus[], to: PaymentStatus, set: Record<string, unknown> = {}) {
-    const u = await PaymentModel.findOneAndUpdate({ _id: t._id, status: { $in: from } }, { $set: { status: to, ...set, ...(to === 'COMPLETED' ? { completedAt: new Date() } : {}) } }, { new: true });
+    const u = await PaymentModel.findOneAndUpdate({ _id: t._id, status: { $in: from } }, { $set: { status: to, ...set, ...(to === 'COMPLETED' ? { completedAt: new Date() } : {}) } }, { returnDocument: 'after' });
     if (!u) return PaymentModel.findById(t._id);
     if (u.type === 'PAYOUT' && (to === 'FAILED' || to === 'REJECTED' || to === 'CANCELLED')) await this.refund(u);
     if (to === 'UNCERTAIN') void notificationService.notify('PAYMENT_ATTENTION', `${u.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'} needs review`, `${u.reference}: ${String(set.resultDesc ?? 'no definite result from M-Pesa')}`);
@@ -468,7 +468,7 @@ export class PaymentService {
   }
 
   private async refund(t: PaymentDoc) {
-    const claimed = await PaymentModel.findOneAndUpdate({ _id: t._id, held: true, refunded: false }, { $set: { refunded: true } }, { new: true });
+    const claimed = await PaymentModel.findOneAndUpdate({ _id: t._id, held: true, refunded: false }, { $set: { refunded: true } }, { returnDocument: 'after' });
     if (!claimed) return;
     const ok = await portfolioService.applyCashFlow(claimed.user.toString(), usd(claimed.amountCents));
     if (!ok) await SystemEventModel.create({ type: 'PAYMENT_REFUND_FAILED', level: 'fatal', component: 'mpesa', message: `Refund of ${claimed.reference} failed - refund it manually`, details: { id: claimed._id.toString() } }).catch(() => undefined);
@@ -531,7 +531,7 @@ export class PaymentService {
 
   /** Send an approved payout through M-Pesa B2C. */
   async send(id: string, adminId: string | null) {
-    const t = await PaymentModel.findOneAndUpdate({ _id: id, type: 'PAYOUT', status: 'PENDING', held: true }, { $set: { status: 'PROCESSING', reviewedAt: new Date(), ...(adminId ? { reviewedBy: adminId } : {}) } }, { new: true });
+    const t = await PaymentModel.findOneAndUpdate({ _id: id, type: 'PAYOUT', status: 'PENDING', held: true }, { $set: { status: 'PROCESSING', reviewedAt: new Date(), ...(adminId ? { reviewedBy: adminId } : {}) } }, { returnDocument: 'after' });
     if (!t) throw new AppError(409, 'Only pending withdrawals can be approved', 'INVALID_STATE');
     const c = await this.config();
     const urls = this.callbackUrls(c);

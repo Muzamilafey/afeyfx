@@ -37,7 +37,7 @@ export class BrokerService {
   }
 
   async config(): Promise<BrokerConfigDoc> {
-    return (await BrokerConfigModel.findOneAndUpdate({ key: 'brokers' }, { $setOnInsert: { key: 'brokers' } }, { upsert: true, new: true }))!;
+    return (await BrokerConfigModel.findOneAndUpdate({ key: 'brokers' }, { $setOnInsert: { key: 'brokers' } }, { upsert: true, returnDocument: 'after' }))!;
   }
 
   /** Rebuild adapters from current settings (after config or integration changes). */

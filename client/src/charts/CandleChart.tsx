@@ -3,6 +3,9 @@ import { CandlestickSeries, HistogramSeries, LineStyle, createChart, type IChart
 import type { Candle } from '../types';
 import { useTheme } from '../hooks/useTheme';
 
+const ts = (k: Candle) => Math.floor(k.timestamp / 1000) as UTCTimestamp;
+const volColor = (k: Candle) => (k.close >= k.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)');
+
 export interface PriceMarker {
   price: number;
   color: string;
@@ -13,7 +16,7 @@ export interface PriceMarker {
  * Candlestick + volume chart (TradingView lightweight-charts), theme-aware.
  * `live` is the forming candle built from streaming ticks; `lines` draws e.g. position entries.
  */
-export function CandleChart({ candles, live, lines = [], height = 320, fill = false }: { candles: Candle[]; live?: Candle | null; lines?: PriceMarker[]; height?: number; fill?: boolean }) {
+export function CandleChart({ candles, live, lines = [], height = 320, fill = false, precision }: { candles: Candle[]; live?: Candle | null; lines?: PriceMarker[]; height?: number; fill?: boolean; precision?: number }) {
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -49,15 +52,33 @@ export function CandleChart({ candles, live, lines = [], height = 320, fill = fa
   }, [height, theme, fill]);
 
   useEffect(() => {
-    const t = (k: Candle) => Math.floor(k.timestamp / 1000) as UTCTimestamp;
+    if (precision === undefined) return;
+    series.current?.applyOptions({ priceFormat: { type: 'price', precision, minMove: 1 / 10 ** precision } });
+  }, [precision, theme]);
+
+  // Full redraw only when the closed-candle history changes...
+  const lastSet = useRef(0);
+  useEffect(() => {
     const all = live && (!candles.length || live.timestamp > candles[candles.length - 1].timestamp) ? [...candles, live] : candles;
-    series.current?.setData(all.map((k) => ({ time: t(k), open: k.open, high: k.high, low: k.low, close: k.close })));
-    vol.current?.setData(all.map((k) => ({ time: t(k), value: k.volume, color: k.close >= k.open ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)' })));
+    series.current?.setData(all.map((k) => ({ time: ts(k), open: k.open, high: k.high, low: k.low, close: k.close })));
+    vol.current?.setData(all.map((k) => ({ time: ts(k), value: k.volume, color: volColor(k) })));
+    lastSet.current = all.length ? all[all.length - 1].timestamp : 0;
     if (!fitted.current && all.length) {
       chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, all.length - 120), to: all.length + 6 });
       fitted.current = true;
     }
-  }, [candles, live, theme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candles, theme]);
+
+  // ...while every tick just moves the forming candle in place (smooth, no re-render of history).
+  useEffect(() => {
+    if (!live || !series.current) return;
+    if (candles.length && live.timestamp < candles[candles.length - 1].timestamp) return;
+    if (live.timestamp < lastSet.current) return;
+    series.current.update({ time: ts(live), open: live.open, high: live.high, low: live.low, close: live.close });
+    vol.current?.update({ time: ts(live), value: live.volume, color: volColor(live) });
+    lastSet.current = live.timestamp;
+  }, [live, candles]);
 
   useEffect(() => {
     const s = series.current;

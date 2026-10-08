@@ -29,7 +29,7 @@ export const RISK_BOUNDS: Record<keyof Omit<RiskConfig, 'allowShort'>, [number, 
 
 export const SettingsService = {
   async load() {
-    const doc = await SettingsModel.findOneAndUpdate({ key: 'global' }, { $setOnInsert: { key: 'global' } }, { upsert: true, new: true });
+    const doc = await SettingsModel.findOneAndUpdate({ key: 'global' }, { $setOnInsert: { key: 'global' } }, { upsert: true, returnDocument: 'after' });
     const s = tradingState.get();
     const risk = { ...s.risk };
     for (const [k, v] of Object.entries(doc.risk ?? {})) if (v !== undefined && v !== null && k in risk) (risk as Record<string, unknown>)[k] = v;

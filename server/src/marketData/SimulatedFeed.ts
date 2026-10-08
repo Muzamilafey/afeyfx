@@ -113,7 +113,7 @@ export class SimulatedFeed {
       const byTf = new Map<Timeframe, Candle[]>();
       for (const tf of this.timeframes) byTf.set(tf, aggregate(series, TIMEFRAME_MS[tf]).slice(-bars));
       out.set(sym, byTf);
-      this.state.set(sym, { profile, price: p, vol: 0.00025 * profile.vol, open: new Map() });
+      this.state.set(sym, { profile, price: p, vol: 0.000065 * profile.vol, open: new Map() });
     }
     return out;
   }
@@ -123,7 +123,7 @@ export class SimulatedFeed {
   start(intervalMs = 1000) {
     this.intervalMs = intervalMs;
     if (!this.state.size) this.history(10);
-    for (const sym of this.symbols) if (!this.state.has(sym)) this.state.set(sym, { profile: profileFor(sym), price: profileFor(sym).seed, vol: 0.00025 * profileFor(sym).vol, open: new Map() });
+    for (const sym of this.symbols) if (!this.state.has(sym)) this.state.set(sym, { profile: profileFor(sym), price: profileFor(sym).seed, vol: 0.000065 * profileFor(sym).vol, open: new Map() });
     this.timer = setInterval(() => this.tick(), intervalMs);
     this.tick();
   }
@@ -137,7 +137,7 @@ export class SimulatedFeed {
       const pv = s.profile.vol;
       // Per-tick volatility scaled for the tick interval (calibrated for 1s ticks).
       const scale = Math.sqrt(this.intervalMs / 1000);
-      s.vol = Math.min(0.0015 * pv, Math.max(0.00008 * pv, s.vol * (1 + 0.04 * this.gauss())));
+      s.vol = Math.min(0.00019 * pv, Math.max(0.00002 * pv, s.vol * (1 + 0.04 * this.gauss())));
       s.price *= Math.exp(s.vol * scale * this.gauss());
       const spread = s.price * s.profile.spread;
       const bid = s.price - spread / 2;

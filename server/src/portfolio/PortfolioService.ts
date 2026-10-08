@@ -35,7 +35,7 @@ export class PortfolioService {
       p = await PortfolioModel.findOneAndUpdate(
         { mode, owner: ownerQ(owner) },
         { $setOnInsert: { mode, owner: ownerQ(owner), startingBalance: start, balance: start, equity: start, available: start, peakEquity: start, dayStartEquity: start, dayStartAt: startOfUtcDay(), weekStartEquity: start, weekStartAt: startOfUtcWeek() } },
-        { upsert: true, new: true },
+        { upsert: true, returnDocument: 'after' },
       );
     }
     return p!;

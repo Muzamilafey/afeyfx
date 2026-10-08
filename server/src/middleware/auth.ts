@@ -4,6 +4,7 @@ import { AppError } from '../utils/errors';
 import type { Role } from '../types';
 import { audit } from '../services/AuditService';
 import { env } from '../config/env';
+import { User } from '../models/User';
 
 /** Verifies the Bearer access token. Rejects 2FA-pending challenge tokens. */
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
@@ -34,10 +35,21 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
-/** Trading and administrative actions require a verified email address (REQUIRE_EMAIL_VERIFICATION). */
+/**
+ * Trading and administrative actions require a verified email address (REQUIRE_EMAIL_VERIFICATION).
+ * The access token carries the flag; if it says "unverified" the database is checked, because the
+ * user may have verified after the token was issued (tokens live up to 15 minutes).
+ */
 export function requireVerifiedEmail(req: Request, _res: Response, next: NextFunction) {
   if (!env.REQUIRE_EMAIL_VERIFICATION || req.user?.emailVerified) return next();
-  return next(new AppError(403, 'Verify your email address to use this feature', 'EMAIL_NOT_VERIFIED'));
+  if (!req.user) return next(new AppError(401, 'Authentication required', 'UNAUTHENTICATED'));
+  User.exists({ _id: req.user.id, emailVerified: true, active: { $ne: false } })
+    .then((ok) => {
+      if (!ok) return next(new AppError(403, 'Verify your email address to use this feature', 'EMAIL_NOT_VERIFIED'));
+      req.user!.emailVerified = true;
+      return next();
+    })
+    .catch(next);
 }
 
 /**

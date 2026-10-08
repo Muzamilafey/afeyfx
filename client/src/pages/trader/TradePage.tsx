@@ -5,9 +5,11 @@ import { CandleChart, type PriceMarker } from '../../charts/CandleChart';
 import { useToast } from '../../components/Toaster';
 import { useAuth } from '../../hooks/useAuth';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
-import { livePnl, useTrader } from '../../hooks/useTrader';
+import { livePnl, pricePrecision, useTrader } from '../../hooks/useTrader';
+import { useFeatures } from '../../hooks/useFeatures';
+import { MarketIcon } from '../../components/MarketIcon';
 import { api } from '../../services/api';
-import { fmtNum, fmtPct, fmtPrice, fmtSigned, pnlClass } from '../../utils/format';
+import { fmtNum, fmtPct, fmtPriceDp, fmtSigned, pnlClass } from '../../utils/format';
 import type { Candle, Position, Trade } from '../../types';
 
 const TFS = [
@@ -31,10 +33,14 @@ function UtcClock() {
   );
 }
 
+const CAT_LABEL: Record<string, string> = { crypto: 'Crypto', forex: 'Forex', metals: 'Metals' };
+
 function AssetPicker({ symbol, onPick }: { symbol: string; onPick(s: string): void }) {
   const { markets, prices } = useTrader();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const cats = [...new Set(markets.map((m) => m.category ?? 'crypto'))];
+  const [cat, setCat] = useState<string>('all');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
@@ -42,33 +48,47 @@ function AssetPicker({ symbol, onPick }: { symbol: string; onPick(s: string): vo
     return () => document.removeEventListener('mousedown', close);
   }, []);
   const m = markets.find((x) => x.symbol === symbol);
+  const list = markets.filter((x) => (cat === 'all' || (x.category ?? 'crypto') === cat) && (x.symbol.replace('/', '').includes(q.replace('/', '')) || (x.name ?? '').toUpperCase().includes(q)));
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} className="flex min-w-56 items-center gap-3 rounded-xl bg-slate-900/90 px-3 py-2 text-left ring-1 ring-slate-800 backdrop-blur hover:ring-slate-700" aria-haspopup="listbox">
-        <CoinBadge symbol={symbol} />
+        <MarketIcon symbol={symbol} />
         <div className="flex-1 leading-tight">
           <div className="font-bold text-slate-50">{symbol}</div>
-          <div className={`text-xs font-semibold ${pnlClass(m?.change24hPct)}`}>{fmtPct(m?.change24hPct)} 24h</div>
+          <div className={`text-xs font-semibold ${pnlClass(m?.change24hPct)}`}>
+            {m?.marketOpen === false ? <span className="text-amber-400">Market closed</span> : <>{fmtPct(m?.change24hPct)} 24h</>}
+          </div>
         </div>
         <ChevronDown size={16} className="text-slate-400" />
       </button>
       {open && (
-        <div className="absolute z-40 mt-2 w-80 rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl">
+        <div className="absolute z-40 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-2xl">
           <div className="mb-2 flex items-center gap-2 rounded-lg bg-slate-950 px-2">
             <Search size={14} className="text-slate-500" />
-            <input autoFocus className="h-9 flex-1 bg-transparent text-sm outline-none" placeholder="Search markets" value={q} onChange={(e) => setQ(e.target.value.toUpperCase())} />
+            <input autoFocus className="h-9 flex-1 bg-transparent text-sm outline-none" placeholder="Search EUR/USD, gold, bitcoin…" value={q} onChange={(e) => setQ(e.target.value.toUpperCase())} />
           </div>
-          <div className="max-h-72 overflow-auto" role="listbox">
-            {markets
-              .filter((x) => x.symbol.includes(q))
-              .map((x) => (
-                <button key={x.symbol} role="option" aria-selected={x.symbol === symbol} onClick={() => (onPick(x.symbol), setOpen(false))} className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-slate-800 ${x.symbol === symbol ? 'bg-slate-800' : ''}`}>
-                  <CoinBadge symbol={x.symbol} />
-                  <span className="flex-1 text-sm font-semibold">{x.symbol}</span>
-                  <span className="font-mono text-xs text-slate-300">{fmtPrice(prices[x.symbol]?.last ?? x.price)}</span>
-                  <span className={`w-16 text-right text-xs font-semibold ${pnlClass(x.change24hPct)}`}>{fmtPct(x.change24hPct)}</span>
+          {cats.length > 1 && (
+            <div className="mb-2 flex gap-1 text-xs" role="tablist">
+              {['all', ...cats].map((c) => (
+                <button key={c} role="tab" aria-selected={cat === c} onClick={() => setCat(c)} className={`rounded-lg px-3 py-1 font-semibold ${cat === c ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                  {c === 'all' ? 'All' : CAT_LABEL[c] ?? c}
                 </button>
               ))}
+            </div>
+          )}
+          <div className="max-h-80 overflow-auto" role="listbox">
+            {list.map((x) => (
+              <button key={x.symbol} role="option" aria-selected={x.symbol === symbol} onClick={() => (onPick(x.symbol), setOpen(false))} className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-slate-800 ${x.symbol === symbol ? 'bg-slate-800' : ''}`}>
+                <MarketIcon symbol={x.symbol} size={28} />
+                <span className="min-w-0 flex-1 leading-tight">
+                  <span className="block text-sm font-semibold">{x.symbol}</span>
+                  <span className="block truncate text-[11px] text-slate-500">{x.name}</span>
+                </span>
+                <span className="font-mono text-xs text-slate-300">{x.unavailable ? '—' : fmtPriceDp(prices[x.symbol]?.last ?? x.price, x.pricePrecision)}</span>
+                <span className={`w-14 text-right text-xs font-semibold ${x.marketOpen === false ? 'text-amber-400' : pnlClass(x.change24hPct)}`}>{x.marketOpen === false ? 'Closed' : fmtPct(x.change24hPct)}</span>
+              </button>
+            ))}
+            {!list.length && <div className="py-6 text-center text-sm text-slate-500">No markets found</div>}
           </div>
         </div>
       )}
@@ -76,15 +96,8 @@ function AssetPicker({ symbol, onPick }: { symbol: string; onPick(s: string): vo
   );
 }
 
-export function CoinBadge({ symbol, size = 30 }: { symbol: string; size?: number }) {
-  const base = symbol.split('/')[0];
-  const colors: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', SOL: '#14f195', BNB: '#f3ba2f', XRP: '#23292f', ADA: '#0033ad', DOGE: '#c2a633' };
-  return (
-    <span className="inline-flex shrink-0 items-center justify-center rounded-full text-[10px] font-black text-white" style={{ width: size, height: size, background: colors[base] ?? '#0284c7' }}>
-      {base.slice(0, 3)}
-    </span>
-  );
-}
+/** @deprecated use MarketIcon */
+export const CoinBadge = MarketIcon;
 
 function Stepper({ label, value, onChange, step, min, max, format, hint }: { label: string; value: number; onChange(v: number): void; step: number; min: number; max: number; format(v: number): string; hint?: string }) {
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v * 1e6) / 1e6));
@@ -109,9 +122,13 @@ function Stepper({ label, value, onChange, step, min, max, format, hint }: { lab
 }
 
 function OrderTicket({ symbol }: { symbol: string }) {
-  const { account, prices, markets, reloadAccount, reloadPositions } = useTrader();
+  const { account, accountType, prices, markets, reloadAccount, reloadPositions, openDeposit } = useTrader();
+  const { features } = useFeatures();
   const { user } = useAuth();
   const toast = useToast();
+  const isReal = accountType === 'REAL';
+  const market = markets.find((m) => m.symbol === symbol);
+  const dp = pricePrecision(markets, symbol);
   const [investment, setInvestment] = useState(100);
   const [sl, setSl] = useState(0.02);
   const [tpOn, setTpOn] = useState(true);
@@ -119,13 +136,23 @@ function OrderTicket({ symbol }: { symbol: string }) {
   const [busy, setBusy] = useState<'LONG' | 'SHORT' | null>(null);
   const price = prices[symbol]?.last ?? markets.find((m) => m.symbol === symbol)?.price;
   const fees = investment * 0.001 * 2;
-  const blocked = !user?.emailVerified ? 'Verify your email to trade' : !price ? 'Waiting for market data' : investment > (account?.available ?? 0) ? 'Insufficient demo balance' : null;
+  const blocked = !user?.emailVerified
+    ? 'Verify your email to trade'
+    : isReal && !features.realTrading
+      ? 'Real-account trading is not open yet'
+      : market?.marketOpen === false
+        ? 'Market closed — forex trades Sunday 21:00 to Friday 21:00 UTC'
+        : !price
+          ? 'Waiting for market data'
+          : investment > (account?.available ?? 0)
+            ? `Insufficient ${isReal ? '' : 'demo '}balance`
+            : null;
 
   const place = async (direction: 'LONG' | 'SHORT') => {
     setBusy(direction);
     try {
-      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { symbol, direction, investment, stopLossPct: sl, takeProfitPct: tpOn ? tp : undefined, idempotencyKey: crypto.randomUUID() } });
-      toast('success', `${direction === 'LONG' ? 'Buy' : 'Sell'} ${symbol} filled`, `${fmtNum(r.position.amount, 6)} @ ${fmtPrice(r.position.entryPrice)}`);
+      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { account: accountType, symbol, direction, investment, stopLossPct: sl, takeProfitPct: tpOn ? tp : undefined, idempotencyKey: crypto.randomUUID() } });
+      toast('success', `${direction === 'LONG' ? 'Buy' : 'Sell'} ${symbol} filled`, `${fmtNum(r.position.amount, market?.category === 'crypto' ? 6 : 2)} @ ${fmtPriceDp(r.position.entryPrice, dp)}${isReal ? ' · Real account' : ''}`);
       await Promise.all([reloadPositions(), reloadAccount()]);
     } catch (e) {
       toast('error', 'Order rejected', (e as Error).message);
@@ -138,9 +165,9 @@ function OrderTicket({ symbol }: { symbol: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 font-bold text-slate-50">
-          <CoinBadge symbol={symbol} size={24} /> {symbol}
+          <MarketIcon symbol={symbol} size={24} /> {symbol}
         </span>
-        <span className="font-mono text-sm text-slate-300">{fmtPrice(price)}</span>
+        <span className="font-mono text-sm text-slate-300">{fmtPriceDp(price, dp)}</span>
       </div>
       <Stepper label="Investment" value={investment} onChange={setInvestment} step={10} min={10} max={100_000} format={(v) => `$${fmtNum(v, 0)}`} />
       <div className="grid grid-cols-4 gap-1.5">
@@ -161,7 +188,7 @@ function OrderTicket({ symbol }: { symbol: string }) {
         <input type="checkbox" checked={tpOn} onChange={(e) => setTpOn(e.target.checked)} className="h-4 w-4 accent-sky-500" />
       </label>
       <div className="space-y-1 rounded-lg bg-slate-900 p-2.5 text-xs">
-        <div className="flex justify-between"><span className="text-slate-400">Units</span><span className="font-mono text-slate-200">{price ? fmtNum(investment / price, 6) : '—'}</span></div>
+        <div className="flex justify-between"><span className="text-slate-400">Units</span><span className="font-mono text-slate-200">{price ? fmtNum(investment / price, market?.category === 'crypto' ? 6 : 2) : '—'}</span></div>
         <div className="flex justify-between"><span className="text-slate-400">Max loss at stop ≈</span><span className="font-mono text-red-400">-${fmtNum(investment * sl + fees)}</span></div>
         {tpOn && <div className="flex justify-between"><span className="text-slate-400">Profit at target ≈</span><span className="font-mono text-emerald-400">+${fmtNum(investment * tp - fees)}</span></div>}
         <div className="flex justify-between"><span className="text-slate-400">Est. fees</span><span className="font-mono text-slate-300">${fmtNum(fees)}</span></div>
@@ -173,18 +200,24 @@ function OrderTicket({ symbol }: { symbol: string }) {
         {busy === 'SHORT' ? 'Placing…' : 'Sell'} <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25"><ArrowDown size={16} /></span>
       </button>
       {blocked && <div className="text-center text-xs text-amber-400">{blocked}</div>}
-      <p className="text-center text-[10px] leading-snug text-slate-500">Demo account · virtual funds. Simulated fills include fees, spread and slippage.</p>
+      {isReal && features.deposits && (account?.available ?? 0) < investment && (
+        <button className="w-full rounded-lg bg-emerald-500/15 py-2 text-sm font-bold text-emerald-400 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25" onClick={openDeposit}>
+          + Deposit with M-Pesa
+        </button>
+      )}
+      <p className="text-center text-[10px] leading-snug text-slate-500">{isReal ? 'Real account · real money. Fills at the live market price incl. fees and spread. Trading involves risk of loss.' : 'Demo account · virtual funds. Simulated fills include fees, spread and slippage.'}</p>
     </div>
   );
 }
 
 function TradesPanel() {
-  const { positions, prices, reloadPositions, reloadAccount } = useTrader();
+  const { positions, prices, markets, accountType, reloadPositions, reloadAccount } = useTrader();
   const toast = useToast();
   const [tab, setTab] = useState<'open' | 'closed'>('open');
   const [closed, setClosed] = useState<Trade[]>([]);
-  const loadClosed = () => api<{ trades: Trade[] }>('/account/history?limit=30').then((r) => setClosed(r.trades), () => undefined);
-  useEffect(() => void loadClosed(), []);
+  const loadClosed = () => api<{ trades: Trade[] }>(`/account/history?limit=30&account=${accountType}`).then((r) => setClosed(r.trades), () => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => void loadClosed(), [accountType]);
   useSocketEvent('trade', () => void loadClosed());
 
   const close = async (p: Position) => {
@@ -214,17 +247,17 @@ function TradesPanel() {
               return (
                 <div key={p._id} className="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
                   <div className="flex items-center gap-2">
-                    <CoinBadge symbol={p.symbol} size={22} />
+                    <MarketIcon symbol={p.symbol} size={22} />
                     <span className="flex-1 truncate text-sm font-semibold">{p.symbol}</span>
                     <span className={`flex items-center gap-0.5 text-xs font-bold ${p.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400'}`}>
                       {p.direction === 'LONG' ? <ArrowUp size={13} /> : <ArrowDown size={13} />} {p.direction === 'LONG' ? 'BUY' : 'SELL'}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-slate-400">
-                    <span>Entry <b className="font-mono text-slate-200">{fmtPrice(p.entryPrice)}</b></span>
-                    <span className="text-right">Size <b className="font-mono text-slate-200">${fmtNum(p.entryPrice * p.amount, 0)}</b></span>
-                    <span>SL <b className="font-mono text-red-400">{fmtPrice(p.stopLoss)}</b></span>
-                    <span className="text-right">TP <b className="font-mono text-emerald-400">{fmtPrice(p.takeProfit)}</b></span>
+                    <span>Entry <b className="font-mono text-slate-200">{fmtPriceDp(p.entryPrice, pricePrecision(markets, p.symbol))}</b></span>
+                    <span className="text-right">Size <b className="font-mono text-slate-200">${fmtNum(p.entryPrice * p.amount * (p.quoteRate ?? 1), 0)}</b></span>
+                    <span>SL <b className="font-mono text-red-400">{fmtPriceDp(p.stopLoss, pricePrecision(markets, p.symbol))}</b></span>
+                    <span className="text-right">TP <b className="font-mono text-emerald-400">{fmtPriceDp(p.takeProfit, pricePrecision(markets, p.symbol))}</b></span>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span className={`font-mono text-base font-bold ${pnlClass(pnl)}`}>{fmtSigned(pnl)} $</span>
@@ -242,7 +275,7 @@ function TradesPanel() {
           (closed.length ? (
             closed.map((t) => (
               <div key={t._id} className="flex items-center gap-2 rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
-                <CoinBadge symbol={t.symbol} size={22} />
+                <MarketIcon symbol={t.symbol} size={22} />
                 <div className="flex-1 leading-tight">
                   <div className="text-sm font-semibold">{t.symbol}</div>
                   <div className="text-[11px] text-slate-500">{t.direction === 'LONG' ? 'Buy' : 'Sell'} · {t.exitReason}</div>
@@ -300,12 +333,22 @@ export function TradePage() {
         const open = c?.close ?? candles[candles.length - 1]?.close ?? tick.last;
         return { timestamp: bucket, open, high: Math.max(open, tick.last), low: Math.min(open, tick.last), close: tick.last, volume: 0 };
       }
+      if (c.close === tick.last) return c;
       return { ...c, high: Math.max(c.high, tick.last), low: Math.min(c.low, tick.last), close: tick.last };
     });
   }, [tick, tfMs, candles]);
 
   useSocketEvent<Candle & { symbol: string; timeframe: string }>('candle', (c) => {
     if (c.symbol === symbol && c.timeframe === tf) setCandles((cs) => [...cs.filter((x) => x.timestamp !== c.timestamp), { timestamp: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }].slice(-800));
+  });
+  // The exchange's own forming candle (true OHLC + volume), merged with tick-level moves in between.
+  useSocketEvent<Candle & { symbol: string; timeframe: string }>('candle-live', (c) => {
+    if (c.symbol !== symbol || c.timeframe !== tf) return;
+    setLive((cur) => {
+      const base = { timestamp: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
+      if (!cur || cur.timestamp !== c.timestamp) return base;
+      return { ...base, high: Math.max(base.high, cur.high), low: Math.min(base.low, cur.low), close: c.close };
+    });
   });
 
   const lines: PriceMarker[] = useMemo(
@@ -329,10 +372,10 @@ export function TradePage() {
         </div>
         <div className="absolute top-4 right-24 z-10 hidden flex-col items-end gap-1 sm:flex">
           <UtcClock />
-          {m && <span className="text-[11px] text-slate-500">Spread {fmtPct(m.spreadPct, 3)} · Vol 24h ${fmtNum(m.volume24h, 0)}</span>}
+          {m && <span className="text-[11px] text-slate-500">{m.name ? `${m.name} · ` : ''}Spread {fmtPct(m.spreadPct, 3)}{m.category === 'crypto' ? ` · Vol 24h $${fmtNum(m.volume24h, 0)}` : ''}</span>}
         </div>
         <div className="min-h-[340px] flex-1 sm:min-h-0 sm:pt-16">
-          {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading market data…</div>}
+          {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill precision={pricePrecision(markets, symbol)} /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading market data…</div>}
         </div>
       </section>
       <aside className="flex w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 lg:w-[320px] lg:border-t-0 lg:border-l">

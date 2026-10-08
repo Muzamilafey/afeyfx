@@ -6,6 +6,9 @@ export const fmtPrice = (v: unknown) => {
   const dp = v >= 1000 ? 2 : v >= 1 ? 4 : 6;
   return fmtNum(v, dp);
 };
+/** Price with an explicit number of decimals (instrument precision, e.g. 5 for EUR/USD). */
+export const fmtPriceDp = (v: unknown, dp?: number) => (dp === undefined ? fmtPrice(v) : isNum(v) ? fmtNum(v, dp) : '—');
+export const fmtUsd = (v: unknown, dp = 2) => (isNum(v) ? `${v < 0 ? '-' : ''}$${fmtNum(Math.abs(v), dp)}` : '—');
 export const fmtPct = (v: unknown, dp = 2) => (isNum(v) ? `${(v * 100).toFixed(dp)}%` : '—');
 export const fmtSigned = (v: unknown, dp = 2) => (isNum(v) ? `${v >= 0 ? '+' : ''}${fmtNum(v, dp)}` : '—');
 export const fmtRatio = (v: unknown) => (isNum(v) ? v.toFixed(2) : 'n/a');

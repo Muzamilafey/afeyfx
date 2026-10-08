@@ -1,7 +1,9 @@
 # AfeyFX — AI-assisted algorithmic trading platform
 
 A MERN + TypeScript platform for market analysis, strategy research, backtesting, paper trading and
-(guarded) live crypto trading, with Claude as an advisory analyst.
+(guarded) live trading, with Claude as an advisory analyst. Traders get a chart-first terminal with crypto,
+forex (40+ pairs) and metals, a demo account, and a real-money account funded and withdrawn through
+**M-Pesa**. Real-account orders fill internally or are routed to an external broker (Deriv, OANDA).
 
 > **Risk warning.** Trading is risky and you can lose money. Nothing in this project guarantees
 > profit. A strategy has to show results in backtests, then out-of-sample tests, then paper trading,
@@ -16,7 +18,8 @@ A MERN + TypeScript platform for market analysis, strategy research, backtesting
 | Backend | Node.js 22, Express 5, TypeScript |
 | Database | MongoDB 7, Mongoose |
 | Real-time | Socket.IO (dashboard), native Binance WebSocket (market data) |
-| Trading | CCXT adapters (Binance, Bybit, Coinbase), exchange REST + WebSocket |
+| Trading | CCXT adapters (Binance, Bybit, Coinbase), exchange REST + WebSocket; brokers: Deriv (WebSocket API), OANDA v20 |
+| Payments | Safaricom Daraja (M-Pesa STK Push + B2C) |
 | AI | Claude API (`@anthropic-ai/sdk`), configurable model via env |
 | Ops | Linux VPS, Nginx, PM2, HTTPS (Let's Encrypt) |
 
@@ -56,6 +59,14 @@ For more detail, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 * **Fail closed.** The circuit breaker stops new entries when data is stale, the exchange disconnects, the spread
   or slippage is abnormal, there are repeated API errors, a loss limit is hit, the clock drifts, the database is down,
   the balance changes unexpectedly, or reconciliation finds a mismatch.
+* **Real-money accounts** (M-Pesa) are off until an admin configures and enables them. A deposit is
+  credited exactly once, and only after M-Pesa confirms it (callback **and** an STK Push Query). Withdrawal funds
+  are held atomically, sent only after admin approval (with a fresh 2FA code) unless the admin set an auto-approve
+  limit, and refunded only on a definite failure. Ambiguous outcomes go to a review queue and are never refunded
+  automatically. Real accounts never trade on simulated prices.
+* **External brokers** (Deriv, OANDA) receive orders only with `LIVE_TRADING_ENABLED=true` **and** an admin route
+  set after a passing connection test. Broker adapters have no deposit, withdrawal or transfer capability
+  (request allow-lists), and the ledger books exactly the P&L the broker reports.
 * **Every live trade is traceable** to user → strategy → signal → AI analysis → risk evaluation → orders →
   exchange responses → fills → P&L (`GET /api/trades/:id/trace`).
 
@@ -129,6 +140,18 @@ MARKET DATA" badge is shown whenever that feed is on.
 | Admin console | Protected action confirmed with an email code |
 | ![Mobile](docs/screenshots/16-mobile-terminal-dark.png) | ![Markets](docs/screenshots/12-markets-light.png) |
 | Mobile | Markets |
+| ![Deposit](docs/screenshots/26-deposit-methods.png) | ![M-Pesa form](docs/screenshots/27-deposit-mpesa-form.png) |
+| Deposit: payment methods | M-Pesa deposit (STK Push) |
+| ![Check phone](docs/screenshots/28-deposit-check-phone.png) | ![Received](docs/screenshots/29-deposit-received.png) |
+| Waiting for the customer's PIN | Deposit confirmed and credited |
+| ![Withdrawal](docs/screenshots/35-withdrawal-form.png) | ![Payments](docs/screenshots/41-payments-history-light.png) |
+| Withdrawal to M-Pesa | Payments history |
+| ![Forex picker](docs/screenshots/32-asset-picker-forex.png) | ![Gold](docs/screenshots/33-terminal-gold-live-candles.png) |
+| Crypto / Forex / Metals picker | Gold with live candles and open trades |
+| ![Admin payments](docs/screenshots/38-admin-payments-review.png) | ![Integrations](docs/screenshots/22-admin-integrations-github-active.png) |
+| Admin: withdrawal review queue | Admin: integrations (missing keys = hidden features) |
+| ![Brokers](docs/screenshots/24-admin-brokers-locked.png) | ![M-Pesa settings](docs/screenshots/23-admin-mpesa-settings.png) |
+| Admin: broker routing (locked until the env kill switch is on) | Admin: M-Pesa settings |
 
 ## Accounts & sign-in
 
@@ -140,7 +163,38 @@ MARKET DATA" badge is shown whenever that feed is on.
 * **Second factors:** an authenticator app (TOTP) and/or **email codes**. Both work at login and for every
   protected admin action. Google and GitHub sign-in never bypass 2FA.
 * **Light / dark / system theme** everywhere (toggle in the header or under Account → Appearance).
-* **Not included on purpose:** deposits and withdrawals. Demo accounts can be reset to $10,000 instead.
+* **Live account:** a second, real-money account per trader (switch in the header menu). See below.
+
+## Real-money accounts, M-Pesa and brokers
+
+* **Deposit** (header button): choose M-Pesa, enter the amount in USD and an M-Pesa number. The customer approves
+  an STK Push prompt on their phone, and the deposit is credited to the **Live account** once M-Pesa confirms it.
+* **Withdrawal** page: amount, M-Pesa method, first/last name and phone. Confirmed with an authenticator code
+  (or an emailed code for traders without 2FA). Funds are held immediately; an admin approves and the payout
+  is sent with M-Pesa B2C. Withdrawals go only to numbers that made a deposit (configurable). Fee, limits and the
+  KES rate are set by the admin.
+* **Payments** page: every deposit and payout with status, fee and KES amount.
+* **Admin → Payments:** Daraja credentials (encrypted), paybill/till, B2C initiator, rates, limits, fees,
+  auto-approve threshold, callback URLs and IP allow-list, a review queue (approve / reject / resolve) and
+  24h totals. Environments: Sandbox, Production, and Simulated (development only, refused in production).
+* **Admin → Brokers:** route each asset class (crypto / forex / metals) to *Internal* (fills at the live
+  market price), **Deriv** (Multiplier contracts with broker-side stop loss / take profit) or **OANDA** (FOK market
+  orders with attached SL/TP). Positions closed at the broker are synced; unknown broker positions are reported.
+  New brokers plug in by implementing one adapter interface.
+* **Admin → Integrations:** every `.env` integration key (SMTP, Google, GitHub, Anthropic, Telegram, OANDA, news,
+  public URLs, sign-up policy) can be set in the console. Secrets are encrypted and never shown again, values apply
+  immediately, and **features whose keys are missing are hidden** (sign-in buttons, AI pages, Telegram tests,
+  forex markets, deposit/withdrawal buttons). Bootstrap and safety settings stay environment-only.
+* Operating real-money accounts requires the licences that apply in your jurisdiction and a Safaricom paybill/till
+  with B2C enabled.
+
+## Markets
+
+Crypto (18 USDT pairs by default, `TRADER_CRYPTO_SYMBOLS`), forex majors, crosses and exotics (EUR/USD, GBP/USD,
+USD/JPY, EUR/GBP, GBP/JPY, AUD/NZD, USD/ZAR, … 41 pairs) and metals (XAU, XAG, XPT, XPD). Forex and metal prices come
+from OANDA v20 pricing; markets outside the forex session are marked **closed** and refuse orders. P&L on pairs quoted
+in another currency (e.g. USD/JPY) is converted to USD at live rates. Charts update **tick by tick**: every trade and
+every update of the forming candle is streamed (Binance `aggTrade` + kline streams; OANDA quotes).
 
 ## Documentation
 

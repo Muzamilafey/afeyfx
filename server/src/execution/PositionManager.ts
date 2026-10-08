@@ -288,7 +288,7 @@ export class PositionManager {
           closedAt: new Date(),
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
     return this.finalize(position, order!, reason);
   }

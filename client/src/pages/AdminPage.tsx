@@ -1,3 +1,4 @@
+import { useFeatures } from '../hooks/useFeatures';
 import { useState } from 'react';
 import { Badge, Card, Empty, ErrorText, Tabs, statusColor } from '../components/ui';
 import { ProtectedActionButton } from '../components/ProtectedActionButton';
@@ -13,6 +14,9 @@ const TABS = ['Controls', 'Live mode', 'Risk', 'AI', 'Exchanges', 'Markets', 'Us
 
 export function AdminPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Controls');
+  const { features } = useFeatures();
+  // The AI tab only exists when an Anthropic key is configured.
+  const tabs = TABS.filter((t) => t !== 'AI' || features.ai);
   const { user } = useAuth();
   return (
     <div className="space-y-4">
@@ -21,11 +25,11 @@ export function AdminPage() {
           Enable a second factor (authenticator app or email codes) in Account & 2FA — every protected admin action requires a fresh code.
         </div>
       )}
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'Controls' && <Controls />}
       {tab === 'Live mode' && <LiveMode />}
       {tab === 'Risk' && <RiskAdmin />}
-      {tab === 'AI' && <AiAdmin />}
+      {tab === 'AI' && features.ai && <AiAdmin />}
       {tab === 'Exchanges' && <Exchanges />}
       {tab === 'Markets' && <Markets />}
       {tab === 'Users' && <Users />}
@@ -417,12 +421,13 @@ function Users() {
 }
 
 function Logs() {
+  const telegram = useFeatures().features.telegram;
   const [kind, setKind] = useState<'Audit' | 'Errors' | 'Notifications'>('Audit');
   const audit = useApi<{ logs: { _id: string; action: string; userEmail?: string; ip?: string; success: boolean; details?: unknown; createdAt: string }[] }>(kind === 'Audit' ? '/system/audit-logs?limit=200' : null, [kind]);
   const errors = useApi<{ events: { _id: string; type: string; level: string; component?: string; message: string; createdAt: string }[] }>(kind === 'Errors' ? '/system/events?limit=200' : null, [kind]);
   const notes = useApi<{ notifications: { _id: string; type: string; title: string; message: string; status: string; severity: string; createdAt: string }[] }>(kind === 'Notifications' ? '/notifications?limit=100' : null, [kind]);
   return (
-    <Card actions={kind === 'Notifications' && <button className="btn-ghost text-xs" onClick={() => void api('/notifications/test', { method: 'POST' }).then(() => notes.reload())}>Send test notification</button>}>
+    <Card actions={kind === 'Notifications' && telegram && <button className="btn-ghost text-xs" onClick={() => void api('/notifications/test', { method: 'POST' }).then(() => notes.reload())}>Send test notification</button>}>
       <Tabs tabs={['Audit', 'Errors', 'Notifications'] as const} value={kind} onChange={setKind} />
       <div className="max-h-[65vh] overflow-auto">
         {kind === 'Audit' && (
