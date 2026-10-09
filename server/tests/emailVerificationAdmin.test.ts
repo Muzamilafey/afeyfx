@@ -7,6 +7,8 @@ import { RefreshToken } from '../src/models/RefreshToken';
 import { AuditLogModel as AuditLog } from '../src/models/AuditLog';
 import { connectTestDb, clearDb, disconnectTestDb } from './helpers/db';
 import { makeUser, PASSWORD } from './helpers/api';
+import { mailService } from '../src/services/MailService';
+import { reloadEnv } from '../src/config/env';
 
 const app = createApp();
 
@@ -56,5 +58,22 @@ describe('admin email verification', () => {
     // Only admins
     const t2 = await makeUser(app, 't2@x.io', 'trader');
     expect((await request(app).post(`/api/users/${id}/verify-email`).set(t2.auth).send({ verified: true })).status).toBe(403);
+  });
+
+  it('resending a verification email without SMTP in production is a clear 503, not a server error', async () => {
+    const t = await makeUser(app, 't@x.io', 'trader', false, false);
+    const prev = { NODE_ENV: process.env.NODE_ENV, SMTP_HOST: process.env.SMTP_HOST };
+    Object.assign(process.env, { NODE_ENV: 'production', SMTP_HOST: '', MARKET_DATA_SOURCE: 'exchange' });
+    reloadEnv();
+    mailService.setSender(null);
+    try {
+      const r = await request(app).post('/api/auth/resend-verification').set(t.auth);
+      expect(r.status).toBe(503);
+      expect(r.body.error.code).toBe('EMAIL_NOT_CONFIGURED');
+      expect(r.body.error.message).toMatch(/administrator can verify/);
+    } finally {
+      Object.assign(process.env, { NODE_ENV: prev.NODE_ENV, SMTP_HOST: prev.SMTP_HOST ?? '' });
+      reloadEnv();
+    }
   });
 });

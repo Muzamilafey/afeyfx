@@ -95,7 +95,7 @@ export const integrationController = {
         r = { ok: integrationService.isConfigured(g), message: integrationService.isConfigured(g) ? 'Credentials set. Make sure the callback URL below is registered with the provider.' : 'Client ID and secret are required' };
       } else throw new AppError(404, 'Unknown integration');
     } catch (err) {
-      if (err instanceof AppError) throw err;
+      if (err instanceof AppError && err.statusCode === 404) throw err;
       r = { ok: false, message: errorMessage(err) };
     }
     await audit(req, { action: 'INTEGRATION_TESTED', resource: id, success: r.ok });

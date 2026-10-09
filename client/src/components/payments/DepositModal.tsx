@@ -1,3 +1,4 @@
+import { uuid } from '../../utils/uuid';
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronRight, Clock, Flame, Loader2, Smartphone, Wallet, X, XCircle } from 'lucide-react';
 import { api } from '../../services/api';
@@ -68,7 +69,7 @@ export function DepositModal() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ payment: Payment }>('/payments/deposits', { method: 'POST', body: { amount: a, phone: p, idempotencyKey: crypto.randomUUID() } });
+      const r = await api<{ payment: Payment }>('/payments/deposits', { method: 'POST', body: { amount: a, phone: p, idempotencyKey: uuid() } });
       setPayment(r.payment);
       setStep('waiting');
       try {

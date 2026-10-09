@@ -1,3 +1,4 @@
+import { uuid } from '../../utils/uuid';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { AccountTabs, STATUS_STYLE } from '../../components/AccountTabs';
@@ -55,7 +56,7 @@ export function WithdrawalPage() {
   const problems = !cfg?.enabled ? 'Withdrawals are temporarily unavailable' : amount < (cfg?.minUsd ?? 0) ? `Minimum withdrawal is $${cfg?.minUsd}` : amount > (cfg?.maxUsd ?? 0) ? `Maximum withdrawal is $${cfg?.maxUsd}` : amount > available + 1e-9 ? 'Amount exceeds your available balance' : !first.trim() || !last.trim() ? 'Enter your first and last name' : !/^(\+?254|0)?[17]\d{8}$/.test(phone.replace(/\s/g, '')) ? 'Enter your M-Pesa number' : null;
 
   const submit = async (code: { totp?: string; emailCode?: string }) => {
-    await api('/payments/payouts', { method: 'POST', body: { amount, phone, firstName: first, lastName: last, idempotencyKey: crypto.randomUUID(), ...code } });
+    await api('/payments/payouts', { method: 'POST', body: { amount, phone, firstName: first, lastName: last, idempotencyKey: uuid(), ...code } });
     setConfirm(false);
     toast('success', 'Withdrawal requested', `$${fmtNum(amount)} to ${phone}. You'll be notified when it is sent.`);
     await Promise.all([reloadAccount(), history.reload()]);

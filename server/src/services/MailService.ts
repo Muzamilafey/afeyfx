@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '../config/env';
 import { logger, errorMessage } from '../utils/logger';
+import { AppError } from '../utils/errors';
 
 export interface MailMessage {
   to: string;
@@ -49,7 +50,7 @@ class MailService {
   async send(m: MailMessage) {
     if (this.override) return this.override(m);
     if (!env.SMTP_HOST) {
-      if (env.NODE_ENV === 'production') throw new Error('Email is not configured (SMTP_HOST)');
+      if (env.NODE_ENV === 'production') throw new AppError(503, 'Email is not set up on this server yet. An administrator can verify your account from the admin console.', 'EMAIL_NOT_CONFIGURED');
       logger.warn({ to: m.to, subject: m.subject, body: m.text }, 'SMTP not configured - development email written to log');
       return;
     }
@@ -57,7 +58,7 @@ class MailService {
       await this.transport().sendMail({ from: env.MAIL_FROM, to: m.to, subject: m.subject, text: m.text, html: m.html });
     } catch (err) {
       logger.error({ err: errorMessage(err), to: m.to }, 'Email send failed');
-      throw new Error('Could not send email');
+      throw new AppError(502, 'The email could not be sent. Please try again later.', 'EMAIL_SEND_FAILED');
     }
   }
 }

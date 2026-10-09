@@ -147,9 +147,13 @@ function Shell() {
       {user && !user.emailVerified && (
         <div className="flex flex-wrap items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-center text-xs text-amber-300">
           Verify your email to start trading.
-          <button className="font-semibold underline" onClick={() => api('/auth/resend-verification', { method: 'POST' }).then(() => toast('success', 'Verification email sent'), (e) => toast('error', 'Could not send', (e as Error).message))}>
-            Resend link
-          </button>
+          {features.email ? (
+            <button className="font-semibold underline" onClick={() => api('/auth/resend-verification', { method: 'POST' }).then(() => toast('success', 'Verification email sent'), (e) => toast('error', 'Could not send', (e as Error).message))}>
+              Resend link
+            </button>
+          ) : (
+            !isAdmin(user) && <span className="text-amber-200/80">Email isn't set up yet — ask an administrator to verify your account.</span>
+          )}
           <VerifySelfButton />
         </div>
       )}

@@ -1,3 +1,4 @@
+import { uuid } from '../../utils/uuid';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronDown, Clock, Minus, Plus, Search, X } from 'lucide-react';
@@ -181,7 +182,7 @@ function OrderTicket({ symbol }: { symbol: string }) {
     setBusy(direction);
     try {
       const size = sizing === 'lots' ? { lots } : { investment };
-      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { account: accountType, symbol, direction, ...size, stopLossPct: slPct, takeProfitPct: tpOn ? tpPct : undefined, idempotencyKey: crypto.randomUUID() } });
+      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { account: accountType, symbol, direction, ...size, stopLossPct: slPct, takeProfitPct: tpOn ? tpPct : undefined, idempotencyKey: uuid() } });
       const what = r.position.lots ? `${fmtNum(r.position.lots, 2)} lot${r.position.lots === 1 ? '' : 's'}` : fmtNum(r.position.amount, market?.category === 'crypto' ? 6 : 2);
       toast('success', `${direction === 'LONG' ? 'Buy' : 'Sell'} ${symbol} filled`, `${what} @ ${fmtPriceDp(r.position.entryPrice, dp)}${isReal ? ' · Real account' : ''}`);
       await Promise.all([reloadPositions(), reloadAccount()]);
