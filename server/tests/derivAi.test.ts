@@ -35,6 +35,7 @@ function candles(granularity: number, count: number) {
 function fakeDeriv(balance = 10_000) {
   const sent: Record<string, unknown>[] = [];
   let lastPrice = 0;
+  let sold = false;
   const rpc = async (m: Record<string, unknown>) => {
     sent.push(m);
     if (m.balance) return { balance: { balance, currency: 'USD', loginid: 'VRTC1' } };
@@ -51,8 +52,16 @@ function fakeDeriv(balance = 10_000) {
     }
     if (m.ticks) return { tick: { symbol: m.ticks, quote: lastPrice || 120, epoch: Math.floor(Date.now() / 1000) }, subscription: { id: 'sub1' } };
     if (m.proposal) return { proposal: { id: 'P1', ask_price: m.amount, spot: lastPrice } };
-    if (m.buy) return { buy: { contract_id: 501, buy_price: 1, transaction_id: 9 } };
-    if (m.proposal_open_contract) return { proposal_open_contract: { contract_id: 501, contract_type: 'MULTUP', underlying_symbol: 'R_100', buy_price: 1, entry_spot: lastPrice, is_sold: 0 } };
+    if (m.buy) {
+      balance -= 1; // Deriv takes the stake
+      return { buy: { contract_id: 501, buy_price: 1, transaction_id: 9 } };
+    }
+    if (m.sell) {
+      sold = true;
+      balance += 1.5; // stake back + 0.50 profit
+      return { sell: { sold_for: 1.5 } };
+    }
+    if (m.proposal_open_contract) return { proposal_open_contract: { contract_id: 501, contract_type: 'MULTUP', underlying_symbol: 'R_100', buy_price: 1, entry_spot: lastPrice, ...(sold ? { is_sold: 1, status: 'sold', profit: 0.5, exit_tick: lastPrice + 1, sell_time: Math.floor(Date.now() / 1000) } : { is_sold: 0 }) } };
     if (m.portfolio) return { portfolio: { contracts: [] } };
     return {};
   };
@@ -162,6 +171,12 @@ describe('Trade with AI (one click, risk engine still decides)', () => {
     expect(again.status).toBe(200);
     expect(again.body.duplicate).toBe(true);
     expect(buys()).toBe(1);
+    // The balance shown follows Deriv right away: stake taken on buy, payout added on close.
+    expect((await BrokerConnectionModel.findById(c._id))!.balance).toBe(9_999);
+    const pos = (await PositionModel.findOne({ connection: c._id, status: 'OPEN' }))!;
+    const cl = await request(app).post(`/api/brokers/connections/${c.id}/positions/${pos.id}/close`).set(t.auth);
+    expect(cl.body).toMatchObject({ confirmed: true, trade: { netPnl: 0.5 } });
+    expect((await BrokerConnectionModel.findById(c._id))!.balance).toBe(10_000.5);
   });
 
   it('rise/fall uses a duration of five bars and SELL for a bearish call is blocked when indicators disagree', async () => {

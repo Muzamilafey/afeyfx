@@ -215,7 +215,15 @@ export class BrokerPositionService {
     eventBus.publish('position', pos.toJSON());
     if (trade) eventBus.publish('trade', trade.toJSON());
     await logBrokerEvent({ _id: pos.connection, user: pos.user }, 'POSITION_CLOSED', `${pos.symbol} ${pos.direction} closed: P&L ${(r.realizedPnl ?? 0).toFixed(2)}`, { brokerRef: r.brokerPositionId, reason: r.reason });
+    // The broker has paid out (or kept) the stake: show the new balance now, not at the next sync.
+    await this.refreshBalance(connectionId);
     return trade ?? null;
+  }
+
+  /** Re-read the balance from the broker after money moved (contract bought or settled). Best effort. */
+  async refreshBalance(connectionId: string) {
+    const c = await BrokerConnectionModel.findById(connectionId);
+    if (c && c.status !== 'REVOKED') await brokerAccounts.sync(c).catch(() => undefined);
   }
 
   async onUpdate(connectionId: string, p: { brokerPositionId: string; currentPrice?: number; unrealizedPnl?: number }) {

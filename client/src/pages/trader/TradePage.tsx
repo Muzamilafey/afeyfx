@@ -297,7 +297,9 @@ function TradesPanel() {
   const close = async (p: Position) => {
     try {
       const r = await api<{ trade: Trade }>(`/account/positions/${p._id}/close`, { method: 'POST' });
-      toast(r.trade.netPnl >= 0 ? 'success' : 'info', `Closed ${p.symbol}`, `Net P&L ${fmtSigned(r.trade.netPnl)}`);
+      // Closing returns the money that was tied up in the trade plus the profit (or minus the loss).
+      const returned = p.entryPrice * p.amount * (p.quoteRate ?? 1) + r.trade.netPnl;
+      toast(r.trade.netPnl >= 0 ? 'success' : 'info', `Closed ${p.symbol}: ${r.trade.netPnl >= 0 ? 'profit' : 'loss'} ${fmtSigned(r.trade.netPnl)}`, `$${fmtNum(returned)} returned to your balance (the $${fmtNum(returned - r.trade.netPnl)} used to open it ${r.trade.netPnl >= 0 ? '+' : '−'} $${fmtNum(Math.abs(r.trade.netPnl))})`);
       await Promise.all([reloadPositions(), reloadAccount(), loadClosed()]);
     } catch (e) {
       toast('error', 'Close failed', (e as Error).message);

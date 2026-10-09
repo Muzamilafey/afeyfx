@@ -83,6 +83,16 @@ export class PortfolioService {
     p.peakEquity = Math.max(p.peakEquity ?? equity, equity);
     p.drawdown = p.peakEquity > 0 ? (p.peakEquity - equity) / p.peakEquity : 0;
     await p.save();
+    // A trade may have settled (balance $inc) while we were valuing: never publish a stale balance.
+    const cur = await PortfolioModel.findById(p._id, { balance: 1 }).lean();
+    if (cur && cur.balance !== p.balance) {
+      p.set('balance', cur.balance, { strict: false });
+      p.available = cur.balance;
+      p.equity = cur.balance + collateral + unrealized;
+      p.peakEquity = Math.max(p.peakEquity ?? p.equity, p.equity);
+      p.drawdown = p.peakEquity > 0 ? (p.peakEquity - p.equity) / p.peakEquity : 0;
+      await PortfolioModel.updateOne({ _id: p._id }, { $set: { available: p.available, equity: p.equity, peakEquity: p.peakEquity, drawdown: p.drawdown } });
+    }
     eventBus.publish('portfolio', this.view(p));
     return p;
   }

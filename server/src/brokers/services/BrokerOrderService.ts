@@ -187,6 +187,7 @@ export class BrokerOrderService {
       }
       await BrokerConnectionModel.updateOne({ _id: conn._id }, { $set: { consecutiveFailures: 0 } });
       await logBrokerEvent(conn, 'ORDER_FILLED', `${req.side.toUpperCase()} ${req.brokerSymbol} confirmed by ${conn.provider}`, { order: order._id.toString(), brokerRef: result.brokerPositionId });
+      await brokerPositions.refreshBalance(conn._id.toString()); // the stake has left the balance
     } else if (result.status === 'OPEN') {
       await logBrokerEvent(conn, 'ORDER_PLACED', `Pending ${req.side} ${req.brokerSymbol} accepted`, { brokerOrderId: result.brokerOrderId });
     } else {
