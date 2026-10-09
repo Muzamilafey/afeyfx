@@ -61,7 +61,7 @@ export class JobScheduler {
     // User broker accounts: health checks + reconciliation against the broker (authoritative).
     this.job('broker-accounts', '45 * * * * *', () => brokerReconciliation.runAll());
     // M-Pesa: re-query deposits whose callback never arrived; expire stale requests.
-    this.job('payments-reconcile', '20 * * * * *', () => paymentService.reconcilePending());
+    this.job('payments-reconcile', '*/15 * * * * *', () => paymentService.reconcilePending());
     // Risk checks: drawdown limits and clock sync.
     this.job('risk-checks', '*/15 * * * * *', () => this.riskChecks());
     // Portfolio snapshots.

@@ -82,3 +82,34 @@ sudo -iu afeyfx && cd /opt/afeyfx && ./scripts/deploy.sh
 
 A restart always comes back in **PAPER** mode. If you were trading live, follow the live re-activation checklist
 in OPERATIONS.md.
+
+## Free HTTPS without buying a domain (sslip.io)
+
+M-Pesa (and Google/GitHub sign-in) work best on HTTPS. If you only have the server's IP address, use a free
+`sslip.io` name: `167-86-67-201.sslip.io` resolves to `167.86.67.201` automatically, and Let's Encrypt issues a
+certificate for it. Replace the IP with your own (dots become dashes).
+
+```bash
+HOST=167-86-67-201.sslip.io        # <- your IP with dashes
+sudo sed "s/listen 14000;/listen 80;/; s/server_name _;/server_name $HOST;/" \
+  /etc/nginx/sites-available/afeyfx-14000 | sudo tee /etc/nginx/sites-available/afeyfx-sslip > /dev/null
+sudo ln -sf /etc/nginx/sites-available/afeyfx-sslip /etc/nginx/sites-enabled/
+sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo nginx -t && sudo systemctl reload nginx
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d $HOST --redirect
+
+cd /var/www/afeyfx
+sed -i "s|^APP_URL=.*|APP_URL=https://$HOST|; s|^CLIENT_ORIGIN=.*|CLIENT_ORIGIN=https://$HOST,http://167.86.67.201:14000|; s|^COOKIE_SECURE=.*|COOKIE_SECURE=true|" .env
+grep -q '^API_PUBLIC_URL=' .env && sed -i "s|^API_PUBLIC_URL=.*|API_PUBLIC_URL=https://$HOST|" .env || echo "API_PUBLIC_URL=https://$HOST" >> .env
+pm2 restart afeyfx-server --update-env
+curl https://$HOST/health
+```
+
+Then use `https://167-86-67-201.sslip.io` (the plain `http://IP:14000` address keeps working for viewing, but
+sign-in cookies are HTTPS-only once `COOKIE_SECURE=true`). If `API_PUBLIC_URL` is also set in Admin → Integrations,
+update it there too (console values override `.env`). `nip.io` works the same way if sslip.io is unavailable.
+
+On plain http, deposits still work when Daraja accepts the callback URL: the server confirms every pending deposit
+by asking M-Pesa directly (STK Push Query) every 15 seconds, so a missing callback only delays confirmation.
+Withdrawal results arrive only by callback, so use HTTPS before enabling withdrawals.

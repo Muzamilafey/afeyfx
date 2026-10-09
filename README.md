@@ -210,7 +210,7 @@ MARKET DATA" badge is shown whenever that feed is on.
   forex markets, deposit/withdrawal buttons). Bootstrap and safety settings stay environment-only.
 * Operating real-money accounts requires the licences that apply in your jurisdiction and a Safaricom paybill/till
   with B2C enabled.
-* **M-Pesa needs a public HTTPS callback URL.** Safaricom posts the payment result to
+* **M-Pesa needs a public callback URL (HTTPS recommended).** Localhost/private addresses are refused; a public http address works if Daraja accepts it, and deposits are confirmed by querying M-Pesa every 15 s even without a callback. For free HTTPS on a bare IP see "Free HTTPS without buying a domain" in docs/DEPLOYMENT.md. Safaricom posts the payment result to
   `<API_PUBLIC_URL or APP_URL>/api/payments/mpesa/...`, so `localhost` or plain `http` can never work. With such a
   URL, deposits and payouts are refused up front, and Admin → Payments says why. For local sandbox testing, run an
   HTTPS tunnel (e.g. `ngrok http 5000` or `cloudflared tunnel --url http://localhost:5000`) and set `API_PUBLIC_URL`

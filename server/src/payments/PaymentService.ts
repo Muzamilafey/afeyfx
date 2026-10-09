@@ -54,22 +54,35 @@ function publicBaseUrl() {
   return (env.API_PUBLIC_URL || env.APP_URL || env.CLIENT_ORIGIN.split(',')[0]).trim().replace(/\/+$/, '');
 }
 
+const parseBase = (base: string) => {
+  try {
+    return new URL(base);
+  } catch {
+    return null;
+  }
+};
+const isPrivateHost = (h: string) => h === 'localhost' || h.endsWith('.local') || h.endsWith('.localhost') || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h === '0.0.0.0' || h === '::1' || h === '[::1]';
+
 /**
- * Safaricom must be able to reach the callback URL: Daraja rejects (or can never deliver to) a
- * URL that isn't public HTTPS, so a deposit started with one can never complete.
+ * Blocking problem: Safaricom can never reach the callback URL (invalid, localhost or a private
+ * network address), so nothing is sent to M-Pesa.
  */
 export function callbackUrlProblem(base = publicBaseUrl()): string | null {
-  let u: URL;
-  try {
-    u = new URL(base);
-  } catch {
-    return `The public URL "${base}" is not a valid URL. Set API_PUBLIC_URL (Admin → Integrations) to your public https:// address.`;
-  }
-  const h = u.hostname;
-  const privateHost = h === 'localhost' || h.endsWith('.local') || h.endsWith('.localhost') || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h === '0.0.0.0' || h === '::1' || h === '[::1]';
-  if (u.protocol !== 'https:' || privateHost)
-    return `M-Pesa callbacks need a public HTTPS URL, but the callback base is ${u.origin}. Safaricom cannot reach localhost or plain http. Set API_PUBLIC_URL (Admin → Integrations) to a public https:// address that forwards to this server (for local testing, an HTTPS tunnel such as ngrok or Cloudflare Tunnel).`;
+  const u = parseBase(base);
+  if (!u) return `The public URL "${base}" is not a valid URL. Set API_PUBLIC_URL (Admin → Integrations) to this server's public address.`;
+  if (isPrivateHost(u.hostname))
+    return `M-Pesa callbacks need a public address, but the callback base is ${u.origin}. Safaricom cannot reach localhost or a private network. Set API_PUBLIC_URL (Admin → Integrations) to this server's public address (for local testing, use an HTTPS tunnel such as ngrok or Cloudflare Tunnel).`;
   return null;
+}
+
+/**
+ * Non-blocking: a public plain-http callback. Daraja may refuse it (production requires HTTPS).
+ * Deposits are still confirmed by querying M-Pesa directly; withdrawals need the result callback.
+ */
+export function callbackUrlWarning(base = publicBaseUrl()): string | null {
+  const u = parseBase(base);
+  if (!u || isPrivateHost(u.hostname) || u.protocol === 'https:') return null;
+  return `The callback URL is plain http (${u.origin}). Daraja may refuse it ("Invalid CallBackURL"), and production requires HTTPS. Deposits are still confirmed by asking M-Pesa directly (every 15 seconds), but withdrawal results arrive only by callback. For reliable payments, serve the site over HTTPS (a free certificate works with a sslip.io name for your IP, see docs/DEPLOYMENT.md).`;
 }
 
 function newReference() {
@@ -219,6 +232,7 @@ export class PaymentService {
         payoutsConfigured: this.payoutsConfigured(c),
         callbackBaseIsHttps: base.startsWith('https://'),
         callbackProblem: c.environment === 'simulated' ? null : callbackUrlProblem(base),
+        callbackWarning: c.environment === 'simulated' ? null : callbackUrlWarning(base),
         simulatedAllowed: env.NODE_ENV !== 'production',
         simulatedMarketData: env.MARKET_DATA_SOURCE === 'simulated',
       },
@@ -278,7 +292,8 @@ export class PaymentService {
       await client.token();
       const problem = callbackUrlProblem();
       if (problem) return { ok: false, message: `Credentials work, but deposits and payouts will fail: ${problem}` };
-      return { ok: true, message: `Connected to Daraja ${c.environment}` };
+      const warning = callbackUrlWarning();
+      return { ok: true, message: `Connected to Daraja ${c.environment}${warning ? `. Note: ${warning}` : ''}` };
     } catch (err) {
       return { ok: false, message: errorMessage(err) };
     }
@@ -661,7 +676,15 @@ export class PaymentService {
    */
   async reconcilePending() {
     const now = Date.now();
-    const deposits = await PaymentModel.find({ type: 'DEPOSIT', status: 'PENDING', checkoutRequestId: { $ne: null }, createdAt: { $lt: new Date(now - 60_000) }, $or: [{ lastQueriedAt: null }, { lastQueriedAt: { $lt: new Date(now - 55_000) } }] }).limit(25);
+    // While the customer is answering the phone prompt (first 5 minutes) ask about every 15 s, then
+    // once a minute. Deposits are therefore confirmed even when Safaricom's callback never arrives.
+    const deposits = await PaymentModel.find({
+      type: 'DEPOSIT',
+      status: 'PENDING',
+      checkoutRequestId: { $ne: null },
+      createdAt: { $lt: new Date(now - 15_000) },
+      $or: [{ lastQueriedAt: null }, { createdAt: { $gt: new Date(now - 5 * 60_000) }, lastQueriedAt: { $lt: new Date(now - 12_000) } }, { lastQueriedAt: { $lt: new Date(now - 55_000) } }],
+    }).limit(25);
     for (const d of deposits) {
       const r = await this.confirmDeposit(d._id.toString()).catch((err) => (logger.warn({ err: errorMessage(err) }, 'Deposit reconcile failed'), null));
       if (r?.status === 'PENDING' && now - d.createdAt.getTime() > 30 * 60_000) await this.finish(d, ['PENDING'], 'UNCERTAIN', { resultDesc: 'No confirmation from M-Pesa after 30 minutes' });

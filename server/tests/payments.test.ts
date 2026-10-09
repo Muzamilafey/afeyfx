@@ -3,7 +3,7 @@ import request from 'supertest';
 import { Types } from 'mongoose';
 import '../src/models';
 import { createApp, redactCallbackToken } from '../src/app';
-import { callbackUrlProblem, paymentService } from '../src/payments/PaymentService';
+import { callbackUrlProblem, callbackUrlWarning, paymentService } from '../src/payments/PaymentService';
 import { DarajaClient, MpesaError, clearMpesaTokenCache, darajaTimestamp, normalizeKenyanPhone, setMpesaFetch } from '../src/payments/MpesaClient';
 import { PaymentConfigModel } from '../src/models/PaymentConfig';
 import { PaymentModel } from '../src/models/PaymentTransaction';
@@ -101,9 +101,48 @@ describe('M-Pesa callback URL checks', () => {
     }
   };
 
-  it('only public HTTPS URLs can receive M-Pesa callbacks', () => {
+  it('blocks only callback addresses Safaricom can never reach; public http is a warning', () => {
     expect(callbackUrlProblem('https://trade.example.com')).toBeNull();
-    for (const bad of ['http://localhost:5000', 'https://localhost', 'http://trade.example.com', 'https://192.168.1.20', 'https://10.0.0.5', 'https://127.0.0.1:5000', 'not a url']) expect(callbackUrlProblem(bad)).toEqual(expect.any(String));
+    expect(callbackUrlWarning('https://trade.example.com')).toBeNull();
+    for (const ok of ['http://167.86.67.201:14000', 'http://trade.example.com']) {
+      expect(callbackUrlProblem(ok)).toBeNull();
+      expect(callbackUrlWarning(ok)).toMatch(/plain http/);
+    }
+    for (const bad of ['http://localhost:5000', 'https://localhost', 'https://192.168.1.20', 'https://10.0.0.5', 'https://127.0.0.1:5000', 'not a url']) expect(callbackUrlProblem(bad)).toEqual(expect.any(String));
+  });
+
+  it('on a public http address a deposit is sent, and confirmed by querying M-Pesa even if no callback ever arrives', async () => {
+    await sandbox();
+    const t = await makeUser(app, 't@x.io', 'trader');
+    const calls: string[] = [];
+    let queried = 0;
+    await withPublicUrl('http://167.86.67.201:14000', async () => {
+      setMpesaFetch(async (url, init = {}) => {
+        calls.push(url);
+        let body: Record<string, unknown> = { access_token: 'tok', expires_in: '3599' };
+        if (url.includes('/stkpush/v1/processrequest')) {
+          expect(JSON.parse(init.body!).CallBackURL).toMatch(/^http:\/\/167\.86\.67\.201:14000\/api\/payments\/mpesa\/stk\//);
+          body = { MerchantRequestID: 'm1', CheckoutRequestID: 'ws_CO_1', ResponseCode: '0', CustomerMessage: 'ok' };
+        }
+        if (url.includes('/stkpushquery/')) {
+          queried++;
+          body = queried === 1 ? { errorCode: '500.001.1001', errorMessage: 'The transaction is being processed' } : { ResultCode: '0', ResultDesc: 'The service request is processed successfully.' };
+        }
+        return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+      });
+      const r = await request(app).post('/api/payments/deposits').set(t.auth).send({ amount: 20, phone: '0712345678', idempotencyKey: 'dep-http-1' });
+      expect(r.status).toBe(201);
+      expect(r.body.payment.status).toBe('PENDING');
+      await PaymentModel.collection.updateOne({ _id: new Types.ObjectId(r.body.payment.id) }, { $set: { createdAt: new Date(Date.now() - 20_000) } });
+      await paymentService.reconcilePending(); // customer hasn't answered yet
+      expect((await PaymentModel.findById(r.body.payment.id))!.status).toBe('PENDING');
+      expect(queried).toBe(1);
+      await PaymentModel.collection.updateOne({ _id: new Types.ObjectId(r.body.payment.id) }, { $set: { lastQueriedAt: new Date(Date.now() - 13_000) } });
+      await paymentService.reconcilePending(); // 13 s later: paid
+      const done = (await PaymentModel.findById(r.body.payment.id))!;
+      expect(done.status).toBe('COMPLETED');
+      expect(done.credited).toBe(true);
+    });
   });
 
   it('a deposit is refused up front (nothing created, nothing sent) when Safaricom could not reach the callback URL', async () => {
@@ -118,7 +157,7 @@ describe('M-Pesa callback URL checks', () => {
       expect(await PaymentModel.countDocuments()).toBe(0);
       expect(fetchSpy).not.toHaveBeenCalled();
       const a = await makeUser(app, 'a@x.io', 'admin', true);
-      expect((await request(app).get('/api/admin/payments/config').set(a.auth)).body.status.callbackProblem).toMatch(/public HTTPS/);
+      expect((await request(app).get('/api/admin/payments/config').set(a.auth)).body.status.callbackProblem).toMatch(/public address/);
     });
   });
 

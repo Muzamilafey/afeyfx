@@ -36,7 +36,7 @@ interface AdminConfig {
   autoApproveBelowUsd: number;
   payoutsToDepositPhonesOnly: boolean;
   secrets: { consumerKey: string; consumerSecret: boolean; passkey: boolean; securityCredential: boolean };
-  status: { depositsConfigured: boolean; payoutsConfigured: boolean; callbackBaseIsHttps: boolean; callbackProblem?: string | null; simulatedAllowed: boolean; simulatedMarketData: boolean };
+  status: { depositsConfigured: boolean; payoutsConfigured: boolean; callbackBaseIsHttps: boolean; callbackProblem?: string | null; callbackWarning?: string | null; simulatedAllowed: boolean; simulatedMarketData: boolean };
   callbackUrls: { stk: string; b2cResult: string; b2cTimeout: string };
 }
 interface Stats {
@@ -121,13 +121,19 @@ function Settings({ onSaved }: { onSaved(): void }) {
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <Badge color={c.status.depositsConfigured ? 'green' : 'amber'}>Deposits {c.status.depositsConfigured ? 'configured' : 'need credentials'}</Badge>
           <Badge color={c.status.payoutsConfigured ? 'green' : 'amber'}>Withdrawals {c.status.payoutsConfigured ? 'configured' : 'need credentials'}</Badge>
-          {!c.status.callbackBaseIsHttps && !c.status.callbackProblem && <Badge color="red">Callback URL must be public HTTPS (set APP_URL / API_PUBLIC_URL)</Badge>}
+          
           {c.status.simulatedMarketData && <Badge color="amber">Simulated market data: real-account trading blocked</Badge>}
         </div>
         {c.environment !== 'simulated' && c.status.callbackProblem && (
           <div className="mt-3 rounded-lg border border-red-900 bg-red-950/40 p-3 text-xs text-red-200" role="alert">
             <b>Deposits and withdrawals are blocked:</b> {c.status.callbackProblem}
             <div className="mt-1 font-mono text-[11px] text-red-300/80">STK callback: {c.callbackUrls.stk.replace(/\/stk\/.+$/, '/stk/…')}</div>
+          </div>
+        )}
+        {c.environment !== 'simulated' && !c.status.callbackProblem && c.status.callbackWarning && (
+          <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/40 p-3 text-xs text-amber-200">
+            <b>Plain-http callback:</b> {c.status.callbackWarning}
+            <div className="mt-1 font-mono text-[11px] text-amber-300/80">STK callback: {c.callbackUrls.stk.replace(/\/stk\/.+$/, '/stk/…')}</div>
           </div>
         )}
         <div className="mt-4 text-xs text-slate-500">Operating real-money accounts requires the relevant licences in your jurisdiction and a Safaricom paybill/till with B2C enabled.</div>
