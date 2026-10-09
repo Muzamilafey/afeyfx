@@ -53,9 +53,15 @@ async function main() {
   const server = http.createServer(app);
   const socket = attachSocket(server);
 
+  // Market data starts in the background: the first start back-fills candle history for every
+  // market (minutes on a fresh install, longer if a venue is slow or blocked), and the API must be
+  // reachable meanwhile. Nothing trades on missing/stale data (stale-data checks + circuit breakers).
   if (env.MARKET_DATA_ENABLED) {
-    await getMarketDataService().start();
-    await forexDataService.start();
+    void (async () => {
+      await getMarketDataService().start().catch((err) => logger.error({ err: errorMessage(err) }, 'Market data failed to start'));
+      await forexDataService.start().catch((err) => logger.error({ err: errorMessage(err) }, 'Forex data failed to start'));
+      logger.info('Market data started');
+    })();
   }
   if (env.JOBS_ENABLED) {
     jobScheduler.start();
