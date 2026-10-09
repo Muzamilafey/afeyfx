@@ -1,3 +1,4 @@
+import { accountBlock, assertAccountUsable } from './AccountStatus';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
@@ -90,7 +91,7 @@ export const AuthService = {
   async login(email: string, password: string, portal: 'trader' | 'admin' = 'trader') {
     const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
     const generic = new AppError(401, 'Invalid email or password', 'INVALID_CREDENTIALS');
-    if (!user || !user.active || !user.passwordHash) {
+    if (!user || user.deletedAt || !user.passwordHash) {
       await bcrypt.compare(password, '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7Q2nV5Yb1aGq7r6WkT3v9hFz1Sx1i9u'); // timing equalization
       throw generic;
     }
@@ -109,6 +110,8 @@ export const AuthService = {
     user.lockedUntil = undefined;
     await user.save();
     if (portal === 'admin' && user.role !== 'admin') throw generic;
+    // Only someone with the right password learns that the account is suspended or disabled.
+    assertAccountUsable(user);
     return this.completeFirstFactor(user);
   },
 
@@ -139,7 +142,8 @@ export const AuthService = {
         created = true;
       }
     }
-    if (!user.active) throw new AppError(401, 'Account disabled', 'INVALID_CREDENTIALS');
+    if (user.deletedAt) throw new AppError(401, 'No account exists for this email', 'INVALID_CREDENTIALS');
+    assertAccountUsable(user);
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) throw new AppError(423, 'Account temporarily locked', 'ACCOUNT_LOCKED');
     if (!user.emailVerified) {
       user.emailVerified = true;
@@ -164,7 +168,7 @@ export const AuthService = {
     }
     if (claims.typ !== '2fa_pending') throw new AppError(401, 'Invalid 2FA challenge', 'INVALID_CHALLENGE');
     const user = await User.findById(claims.sub).select('+twoFactorSecret');
-    if (!user || !user.active || !hasSecondFactor(user)) throw new AppError(401, 'Invalid 2FA challenge', 'INVALID_CHALLENGE');
+    if (!user || accountBlock(user) || !hasSecondFactor(user)) throw new AppError(401, 'Invalid 2FA challenge', 'INVALID_CHALLENGE');
     return user;
   },
 
@@ -234,6 +238,7 @@ export const AuthService = {
     if (user.passwordHash && !(currentPassword && (await bcrypt.compare(currentPassword, user.passwordHash)))) throw new AppError(401, 'Current password is incorrect', 'INVALID_CREDENTIALS');
     user.passwordHash = await this.hashPassword(newPassword);
     user.passwordSet = true;
+    user.mustChangePassword = false;
     await user.save();
     void notifyAccountEvent(user, 'Password changed', 'The password for your AfeyFX account was set or changed.');
   },
@@ -255,7 +260,7 @@ export const AuthService = {
     }
     if (doc.expiresAt.getTime() < Date.now()) throw new AppError(401, 'Refresh token expired', 'INVALID_REFRESH');
     const user = await User.findById(doc.user);
-    if (!user || !user.active) throw new AppError(401, 'User inactive', 'INVALID_REFRESH');
+    if (!user || accountBlock(user)) throw new AppError(401, 'User inactive', 'INVALID_REFRESH');
     const tokens = await this.issueTokens(user, meta, doc.family);
     doc.revokedAt = new Date();
     doc.replacedBy = sha256(tokens.refreshToken);

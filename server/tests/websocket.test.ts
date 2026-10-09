@@ -5,20 +5,31 @@ import { io as ioc, type Socket } from 'socket.io-client';
 import { attachSocket } from '../src/websocket/socket';
 import { AuthService } from '../src/services/AuthService';
 import { eventBus } from '../src/utils/eventBus';
+import { User } from '../src/models/User';
+import { accountStatus } from '../src/services/AccountStatus';
+import { connectTestDb, disconnectTestDb } from './helpers/db';
+
+const ADMIN = '111111111111111111111111';
+const mkUser = (id: string, role: 'admin' | 'trader', extra: Record<string, unknown> = {}) => User.create({ _id: id, email: `${id.slice(0, 4)}@x.io`, name: id, role, ...extra });
 
 let server: http.Server;
 let close: () => void;
 let url: string;
 
 beforeAll(async () => {
+  await connectTestDb();
+  await mkUser(ADMIN, 'admin');
+  await mkUser('aaaaaaaaaaaaaaaaaaaaaaaa', 'trader');
+  await mkUser('bbbbbbbbbbbbbbbbbbbbbbbb', 'trader');
   server = http.createServer();
   close = attachSocket(server).close;
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
-afterAll(() => {
+afterAll(async () => {
   close();
   server.close();
+  await disconnectTestDb();
 });
 
 const connect = (token?: string) =>
@@ -40,7 +51,7 @@ describe('Socket.IO', () => {
   });
 
   it('streams engine events to authenticated clients and throttles price updates', async () => {
-    const token = AuthService.signAccess({ sub: '1', email: 'a@b.c', role: 'admin', tfa: false });
+    const token = AuthService.signAccess({ sub: ADMIN, email: 'a@b.c', role: 'admin', tfa: false });
     const s = await connect(token);
     const trade = new Promise((r) => s.on('trade', r));
     const prices: unknown[] = [];
@@ -70,5 +81,15 @@ describe('Socket.IO', () => {
     expect(got.bob).toEqual([]);
     alice.close();
     bob.close();
+  });
+
+  it('refuses sockets of suspended, disabled or deleted accounts even with a still-valid token', async () => {
+    const id = 'cccccccccccccccccccccccc';
+    await mkUser(id, 'trader', { active: false });
+    accountStatus.invalidate(id);
+    await expect(connect(AuthService.signAccess({ sub: id, email: 'c@x.io', role: 'trader', tfa: false }))).rejects.toThrow(/unauthorized/);
+    await User.updateOne({ _id: id }, { $set: { active: true, suspendedUntil: new Date(Date.now() + 86_400_000) } });
+    accountStatus.invalidate(id);
+    await expect(connect(AuthService.signAccess({ sub: id, email: 'c@x.io', role: 'trader', tfa: false }))).rejects.toThrow(/unauthorized/);
   });
 });

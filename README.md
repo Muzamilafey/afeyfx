@@ -166,6 +166,12 @@ MARKET DATA" badge is shown whenever that feed is on.
 * **Traders** sign up at `/signup` with email and password, **Continue with Google** or **Continue with GitHub**.
   Each trader gets a personal **$10,000 demo (PAPER) account**, isolated from other users and from the
   system strategy book. Placing trades requires a **verified email**.
+* **Admin → Traders:** every trader with demo and live balances, P&L, deposits/withdrawals and open positions, plus
+  a detail view (positions, trade history, payments, broker connections). Account management: **suspend** for 1–90
+  days, **disable/enable**, **soft delete/restore** (refused while positions, unfinished payments or real money remain;
+  history is kept), **reset password** (temporary password, user asked to change it) and **verify email**. Suspending,
+  disabling or deleting signs the user out immediately (sessions, API and live socket). Delete, restore and password
+  reset need a fresh 2FA code. Admins can't act on their own account, and every view and action is audited.
 * **Admins can verify emails manually:** an unverified admin gets a **Verify now (admin)** button (password required), and Admin → System & Risk → Users has Verify / Unverify per user (un-verifying signs that user out). All are audited.
 * **Admins** sign in at `/admin/login` (admin accounts only) and use the admin console at `/admin`. The first
   account ever created becomes the admin, or you can run `npm --prefix server run create-admin`.

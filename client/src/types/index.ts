@@ -17,6 +17,11 @@ export interface User {
   avatarUrl?: string;
   lastLoginAt?: string;
   active: boolean;
+  /** Set when an administrator reset the password; the user should choose a new one. */
+  mustChangePassword?: boolean;
+  suspendedUntil?: string | null;
+  deletedAt?: string | null;
+  statusReason?: string | null;
 }
 
 export type SecondFactor = 'totp' | 'email';

@@ -25,6 +25,14 @@ const userSchema = new Schema(
     lockedUntil: { type: Date },
     lastLoginAt: { type: Date },
     active: { type: Boolean, default: true },
+    /** Admin moderation. Suspended = temporarily blocked until the date; deleted = soft-deleted (history kept). */
+    suspendedUntil: { type: Date },
+    statusReason: { type: String, maxlength: 500 },
+    statusChangedAt: { type: Date },
+    statusChangedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    deletedAt: { type: Date, index: true },
+    /** Set when an administrator reset the password; cleared when the user changes it. */
+    mustChangePassword: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

@@ -18,6 +18,7 @@ import { WithdrawalPage } from './pages/trader/WithdrawalPage';
 import { PaymentsPage } from './pages/trader/PaymentsPage';
 import { BrokersPage } from './pages/trader/BrokersPage';
 import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
+import { AdminTradersPage } from './pages/admin/AdminTradersPage';
 import { AdminBrokersPage } from './pages/admin/AdminBrokersPage';
 import { AdminIntegrationsPage } from './pages/admin/AdminIntegrationsPage';
 import { FeaturesProvider } from './hooks/useFeatures';
@@ -74,6 +75,7 @@ export default function App() {
 
               <Route path="/admin" element={<RequireAdmin><FeaturesProvider><MainLayout /></FeaturesProvider></RequireAdmin>}>
                 <Route index element={<DashboardPage />} />
+                <Route path="traders" element={<AdminTradersPage />} />
                 <Route path="trades" element={<TradesPage />} />
                 <Route path="strategies" element={<StrategiesPage />} />
                 <Route path="backtests" element={<BacktestsPage />} />

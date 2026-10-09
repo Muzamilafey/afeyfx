@@ -144,6 +144,15 @@ function Shell() {
         )}
         <ThemeToggle />
       </header>
+      {user?.mustChangePassword && (
+        <div className="bg-sky-500/15 px-4 py-1.5 text-center text-xs text-sky-300">
+          An administrator reset your password. Please choose a new one under{' '}
+          <button className="font-semibold underline" onClick={() => nav('/account')}>
+            Account
+          </button>
+          .
+        </div>
+      )}
       {user && !user.emailVerified && (
         <div className="flex flex-wrap items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-center text-xs text-amber-300">
           Verify your email to start trading.

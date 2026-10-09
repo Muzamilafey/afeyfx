@@ -67,6 +67,13 @@ Admin: `POST /api/admin/brokers/emergency/disable-all-user-accounts` (P).
 MT5 terminals: `POST /api/bridge/mt5/{hello,heartbeat,symbols,quotes,reports,poll}` (HMAC-signed; see BROKERS.md).
 Socket.IO `broker` events (`quote`, `account`, `status`, `breaker`, `synced`) go only to the owner.
 
+## Traders `/api/admin/traders` (A; P = fresh 2FA code)
+`GET /?q&status=deleted|all` (summaries) · `GET /:id` (accounts, open positions, trades, payments, broker connections; audited) ·
+`POST /:id/suspend` `{days, reason}` · `POST /:id/unsuspend` · `POST /:id/disable` `{reason}` · `POST /:id/enable` ·
+`POST /:id/delete` (P, `{reason, confirm:'DELETE'}`; 409 `ACCOUNT_HAS_FUNDS` while positions/payments/real balance remain) ·
+`POST /:id/restore` (P) · `POST /:id/reset-password` (P, `{password}`). Never on your own account (`SELF_ACTION`).
+Users: `POST /api/users/:id/verify-email` `{verified}` (A) · `POST /api/users/me/verify-email` `{password}` (admin role only).
+
 ## Integrations `/api/admin/integrations` (A) and features
 `GET /` (groups, masked secrets, sources, env-only list) · `PUT /` (P, `{values: {KEY: value}, reset: [KEY]}`) ·
 `POST /:id/test` (email, anthropic, telegram, oanda, news, google, github).

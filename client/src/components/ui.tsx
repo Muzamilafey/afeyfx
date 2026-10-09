@@ -50,11 +50,11 @@ export function ErrorText({ error }: { error?: string | null }) {
   return <div className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-300">{error}</div>;
 }
 
-export function Modal({ open, onClose, title, children }: { open: boolean; onClose(): void; title: string; children: ReactNode }) {
+export function Modal({ open, onClose, title, children, wide = false }: { open: boolean; onClose(): void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+      <div className={`max-h-[90vh] w-full ${wide ? 'max-w-5xl' : 'max-w-lg'} overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-5`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold">{title}</h3>
           <button className="text-slate-400 hover:text-slate-50" onClick={onClose} aria-label="Close">

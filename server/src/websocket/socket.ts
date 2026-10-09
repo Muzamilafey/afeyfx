@@ -1,3 +1,4 @@
+import { accountStatus } from '../services/AccountStatus';
 import type { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import { env } from '../config/env';
@@ -33,6 +34,12 @@ const STREAMED: BusEvent[] = ['price', 'candle', 'candle-live', 'signal', 'order
  * Socket.IO server. Connections must present a valid access token (auth.token). Price updates
  * are throttled per symbol to protect clients; everything else is forwarded as it happens.
  */
+let ioRef: Server | null = null;
+/** Drop every live socket of a user (account suspended, disabled, deleted or password reset). */
+export function disconnectUser(userId: string) {
+  ioRef?.in(`user:${userId}`).disconnectSockets(true);
+}
+
 export function attachSocket(server: HttpServer) {
   const io = new Server(server, {
     cors: { origin: env.CLIENT_ORIGIN.split(',').map((s) => s.trim()), credentials: true },
@@ -47,12 +54,15 @@ export function attachSocket(server: HttpServer) {
       const c = AuthService.verifyAccess(token);
       if (c.typ !== 'access') return next(new Error('unauthorized'));
       socket.data.user = { id: c.sub, role: c.role };
-      return next();
+      // Refuse sockets for accounts that were suspended, disabled or deleted after the token was issued.
+      void accountStatus.check(c.sub).then((block) => next(block ? new Error('unauthorized') : undefined), () => next(new Error('unauthorized')));
+      return undefined;
     } catch {
       return next(new Error('unauthorized'));
     }
   });
 
+  ioRef = io;
   io.on('connection', (socket) => {
     setSocketClientCount(io.engine.clientsCount);
     socket.join('dashboard');

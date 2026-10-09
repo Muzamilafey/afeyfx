@@ -1,3 +1,5 @@
+import { accountStatus } from '../services/AccountStatus';
+import { disconnectUser } from '../websocket/socket';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { User } from '../models/User';
@@ -79,6 +81,8 @@ export const userController = {
     const u = await User.findByIdAndUpdate(req.params.id, { $set: set }, { returnDocument: 'after' });
     if (!u) throw new AppError(404, 'User not found');
     if (req.body.active === false || req.body.role || req.body.emailVerified === false) await RefreshToken.updateMany({ user: u._id, revokedAt: null }, { $set: { revokedAt: new Date() } });
+    accountStatus.invalidate(u._id.toString());
+    if (req.body.active === false) disconnectUser(u._id.toString());
     await audit(req, { action: 'USER_UPDATED', resource: 'user', resourceId: u._id.toString(), details: req.body });
     res.json({ user: u.toJSON() });
   },

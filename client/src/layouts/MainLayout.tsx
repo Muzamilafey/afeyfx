@@ -10,6 +10,7 @@ import { ModeBanner, ModePill } from '../components/ModeBanner';
 
 const NAV = [
   { to: '/admin', label: 'Dashboard', end: true },
+  { to: '/admin/traders', label: 'Traders' },
   { to: '/admin/trades', label: 'Trades & Orders' },
   { to: '/admin/strategies', label: 'Strategies' },
   { to: '/admin/backtests', label: 'Backtests' },
@@ -73,6 +74,7 @@ function Shell() {
               </NavLink>
             ))}
           </nav>
+          {user?.mustChangePassword && <div className="bg-sky-500/15 px-4 py-1.5 text-center text-xs text-sky-300">An administrator reset your password. Choose a new one under Account & 2FA.</div>}
           {user && !user.emailVerified && (
             <div className="flex flex-wrap items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-center text-xs text-amber-300">
               Verify your email address (Account & 2FA) - admin actions are blocked until you do.

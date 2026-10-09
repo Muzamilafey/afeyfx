@@ -18,6 +18,7 @@ import { systemController, systemSchemas } from '../controllers/systemController
 import { accountController, accountSchemas } from '../controllers/accountController';
 import { brokerConnectionController as bc, brokerSchemas, mt5BridgeHandler } from '../controllers/brokerConnectionController';
 import { brokerController, featuresController, integrationController, integrationSchemas } from '../controllers/integrationController';
+import { adminTraderController, adminTraderSchemas } from '../controllers/adminTraderController';
 import { adminPaymentController, mpesaCallbackController, paymentController, paymentSchemas } from '../controllers/paymentController';
 
 /** Read access to system-wide data (strategy book, risk, logs) is admin-only. */
@@ -123,6 +124,20 @@ export function buildApiRouter() {
   api.use('/brokers', brokersR);
 
   // ---- admin payments console ----
+  const adminTraders = Router();
+  adminTraders.use(...admin);
+  adminTraders.get('/', h(adminTraderController.list));
+  adminTraders.get('/:id', h(adminTraderController.get));
+  adminTraders.post('/:id/suspend', v(adminTraderSchemas.suspend), h(adminTraderController.suspend));
+  adminTraders.post('/:id/unsuspend', h(adminTraderController.unsuspend));
+  adminTraders.post('/:id/disable', v(adminTraderSchemas.reason), h(adminTraderController.disable));
+  adminTraders.post('/:id/enable', h(adminTraderController.enable));
+  // Deleting, restoring and resetting a password are protected actions (fresh 2FA code).
+  adminTraders.post('/:id/delete', protectedActionLimiter, h(requireFreshSecondFactor), v(adminTraderSchemas.remove), h(adminTraderController.remove));
+  adminTraders.post('/:id/restore', protectedActionLimiter, h(requireFreshSecondFactor), v(adminTraderSchemas.restore), h(adminTraderController.restore));
+  adminTraders.post('/:id/reset-password', protectedActionLimiter, h(requireFreshSecondFactor), v(adminTraderSchemas.resetPassword), h(adminTraderController.resetPassword));
+  api.use('/admin/traders', adminTraders);
+
   const adminPayments = Router();
   adminPayments.use(...admin);
   adminPayments.get('/config', h(adminPaymentController.getConfig));

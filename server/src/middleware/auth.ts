@@ -1,3 +1,4 @@
+import { accountStatus } from '../services/AccountStatus';
 import type { NextFunction, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { AppError } from '../utils/errors';
@@ -14,10 +15,14 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
     const c = AuthService.verifyAccess(h.slice(7));
     if (c.typ !== 'access') return next(new AppError(401, 'Invalid token type', 'UNAUTHENTICATED'));
     req.user = { id: c.sub, email: c.email, role: c.role, twoFactorEnabled: c.tfa, emailVerified: c.ev === true };
-    return next();
   } catch {
     return next(new AppError(401, 'Invalid or expired token', 'UNAUTHENTICATED'));
   }
+  // Suspended / disabled / deleted accounts are refused immediately, not when the token expires.
+  accountStatus
+    .check(req.user.id)
+    .then((block) => next(block ? new AppError(401, block.message, block.code) : undefined))
+    .catch(next);
 }
 
 const RANK: Record<Role, number> = { viewer: 1, trader: 2, admin: 3 };
