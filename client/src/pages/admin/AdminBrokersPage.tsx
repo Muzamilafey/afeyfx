@@ -38,10 +38,10 @@ const CATS: { id: Cat; label: string }[] = [
 export function AdminBrokersPage() {
   const v = useApi<View>('/admin/brokers');
   const toast = useToast();
-  const [deriv, setDeriv] = useState({ appId: '', token: '', crypto: 50, forex: 50, metals: 50 });
+  const [deriv, setDeriv] = useState({ appId: '', accountId: '', token: '', crypto: 50, forex: 50, metals: 50 });
   useEffect(() => {
     const d = v.data?.brokers.find((b) => b.id === 'deriv');
-    if (d) setDeriv((x) => ({ ...x, appId: String(d.settings.appId ?? ''), crypto: d.settings.multipliers?.crypto ?? 50, forex: d.settings.multipliers?.forex ?? 50, metals: d.settings.multipliers?.metals ?? 50 }));
+    if (d) setDeriv((x) => ({ ...x, appId: String(d.settings.appId ?? ''), accountId: String(d.settings.accountId ?? ''), crypto: d.settings.multipliers?.crypto ?? 50, forex: d.settings.multipliers?.forex ?? 50, metals: d.settings.multipliers?.metals ?? 50 }));
   }, [v.data]);
   if (!v.data) return <div className="p-4 text-slate-500">Loading…</div>;
   const data = v.data;
@@ -141,6 +141,10 @@ export function AdminBrokersPage() {
                   <input className="input" value={deriv.appId} onChange={(e) => setDeriv({ ...deriv, appId: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 12345" />
                 </div>
                 <div>
+                  <label className="label">Account ID (routing account)</label>
+                  <input className="input" value={deriv.accountId} onChange={(e) => setDeriv({ ...deriv, accountId: e.target.value.replace(/[^A-Za-z0-9_-]/g, '') })} placeholder="e.g. VRTC1234567 (demo)" />
+                </div>
+                <div>
                   <label className="label">API token (trade scope only)</label>
                   <input className="input" type="password" autoComplete="off" value={deriv.token} onChange={(e) => setDeriv({ ...deriv, token: e.target.value })} placeholder={b.settings.token ? `Saved ${String(b.settings.token)} — blank keeps it` : 'Not set'} />
                 </div>
@@ -152,7 +156,7 @@ export function AdminBrokersPage() {
                 ))}
                 <div className="text-[11px] text-slate-500 sm:col-span-2">Orders use Deriv Multiplier contracts sized so exposure equals the trader's investment (stake = investment ÷ multiplier), with stop loss / take profit set at Deriv. Create the token with the "Trade" and "Read" scopes only — never "Payments".</div>
                 <div className="flex justify-end sm:col-span-2">
-                  <ProtectedActionButton label="Save Deriv settings" className="btn-primary" title="Save Deriv settings" description="Credentials are encrypted at rest." endpoint="/admin/brokers/deriv" method="PUT" body={{ appId: deriv.appId || undefined, token: deriv.token || undefined, multipliers: { crypto: deriv.crypto, forex: deriv.forex, metals: deriv.metals } }} confirmText="Save" onDone={() => (setDeriv({ ...deriv, token: '' }), void v.reload())} />
+                  <ProtectedActionButton label="Save Deriv settings" className="btn-primary" title="Save Deriv settings" description="Credentials are encrypted at rest." endpoint="/admin/brokers/deriv" method="PUT" body={{ appId: deriv.appId || undefined, accountId: deriv.accountId || undefined, token: deriv.token || undefined, multipliers: { crypto: deriv.crypto, forex: deriv.forex, metals: deriv.metals } }} confirmText="Save" onDone={() => (setDeriv({ ...deriv, token: '' }), void v.reload())} />
                 </div>
               </div>
             ) : (
@@ -179,6 +183,10 @@ export function AdminBrokersPage() {
           </Card>
         ))}
       </div>
+      <Card title="Trader broker accounts — emergency">
+        <p className="mb-3 text-sm text-slate-400">Traders connect their own Deriv / MT5 accounts on their Brokers page. This switch turns trading off on every user broker account at once (positions are not closed; each user re-enables trading themselves).</p>
+        <ProtectedActionButton label="Disable trading on all user broker accounts" title="Disable all user broker accounts" description="Stops new orders on every connected user broker account. Open positions stay open at the brokers." endpoint="/admin/brokers/emergency/disable-all-user-accounts" confirmText="Disable all" onDone={(r) => toast('success', 'User broker accounts disabled', `${(r as { disabled: number }).disabled} account(s)`)} />
+      </Card>
       <div className="text-xs text-slate-500">
         Adding another broker means implementing one adapter (open, close, status, lookup, open positions, test) in <code>server/src/brokers</code>. Adapters have no deposit, withdrawal or transfer capability.
       </div>

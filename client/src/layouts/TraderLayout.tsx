@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Banknote, ChartCandlestick, Check, ChevronDown, GraduationCap, History, LayoutGrid, LogOut, Plus, RotateCcw, Send, Shield, User as UserIcon, Wallet } from 'lucide-react';
+import { Banknote, ChartCandlestick, Check, ChevronDown, GraduationCap, History, LayoutGrid, LogOut, PlugZap, Plus, RotateCcw, Send, Shield, User as UserIcon, Wallet } from 'lucide-react';
 import { Logo } from '../components/BrandIcons';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useToast } from '../components/Toaster';
@@ -19,6 +19,7 @@ const NAV = [
   { to: '/account', label: 'Account', icon: UserIcon },
 ];
 const PAYMENTS_NAV = { to: '/payments', label: 'Payments', icon: Banknote };
+const BROKERS_NAV = { to: '/brokers', label: 'Brokers', icon: PlugZap };
 
 function AccountMenu() {
   const { account, accounts, accountType, setAccountType, positions, reloadAccount, openDeposit } = useTrader();
@@ -119,7 +120,7 @@ function Shell() {
   const nav = useNavigate();
   const connected = useSocketStatus();
   const toast = useToast();
-  const items = [...NAV, ...(features.deposits || features.payouts ? [PAYMENTS_NAV] : []), ...(isAdmin(user) ? [{ to: '/admin', label: 'Admin', icon: Shield }] : [])];
+  const items = [...NAV, ...(features.deposits || features.payouts ? [PAYMENTS_NAV] : []), ...(features.derivConnect || features.mt5Connect ? [BROKERS_NAV] : []), ...(isAdmin(user) ? [{ to: '/admin', label: 'Admin', icon: Shield }] : [])];
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
       <header className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-950 px-3 sm:px-4">

@@ -219,7 +219,7 @@ export class BrokerPositionService {
   }
 
   async onUpdate(connectionId: string, p: { brokerPositionId: string; currentPrice?: number; unrealizedPnl?: number }) {
-    await PositionModel.updateOne({ connection: connectionId, brokerRef: p.brokerPositionId, status: 'OPEN' }, { $set: { currentPrice: p.currentPrice, unrealizedPnl: p.unrealizedPnl ?? 0 } });
+    await PositionModel.updateOne({ connection: connectionId, brokerRef: p.brokerPositionId, status: 'OPEN' }, { $set: { ...(p.currentPrice !== undefined ? { currentPrice: p.currentPrice } : {}), ...(p.unrealizedPnl !== undefined ? { unrealizedPnl: p.unrealizedPnl } : {}) } });
   }
 }
 

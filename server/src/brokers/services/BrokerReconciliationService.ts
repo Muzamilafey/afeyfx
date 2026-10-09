@@ -50,7 +50,7 @@ export class BrokerReconciliationService {
           await brokerPositions.onUpdate(conn._id.toString(), bp);
           continue;
         }
-        await PositionModel.create({ mode: conn.environment === 'real' ? 'LIVE' : 'DEMO', user: conn.user, connection: conn._id, broker: conn.provider, brokerRef: bp.brokerPositionId, exchange: conn.provider, symbol: bp.brokerSymbol, direction: bp.side === 'buy' ? 'LONG' : 'SHORT', amount: bp.volume, entryPrice: bp.entryPrice, currentPrice: bp.currentPrice, stopLoss: bp.stopLoss, takeProfit: bp.takeProfit, strategyKey: 'external', openedAt: bp.openedAt ? new Date(bp.openedAt) : new Date(), brokerData: { product: bp.product, source: 'broker' } }).catch((err) => {
+        await PositionModel.create({ mode: conn.environment === 'real' ? 'LIVE' : 'DEMO', user: conn.user, connection: conn._id, broker: conn.provider, brokerRef: bp.brokerPositionId, exchange: conn.provider, symbol: bp.brokerSymbol, direction: bp.side === 'buy' ? 'LONG' : 'SHORT', amount: bp.volume, entryPrice: bp.entryPrice, currentPrice: bp.currentPrice, unrealizedPnl: bp.unrealizedPnl ?? 0, stopLoss: bp.stopLoss, takeProfit: bp.takeProfit, strategyKey: 'external', openedAt: bp.openedAt ? new Date(bp.openedAt) : new Date(), brokerData: { product: bp.product, source: 'broker' } }).catch((err) => {
           if ((err as { code?: number }).code !== 11000) throw err;
         });
         report.adopted++;

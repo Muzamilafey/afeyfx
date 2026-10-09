@@ -47,6 +47,8 @@ export interface Features {
   payouts: boolean;
   realTrading: boolean;
   realAccount: boolean;
+  derivConnect?: boolean;
+  mt5Connect?: boolean;
 }
 
 export type PaymentStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'REJECTED' | 'CANCELLED' | 'UNCERTAIN';

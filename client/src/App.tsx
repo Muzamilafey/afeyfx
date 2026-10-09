@@ -16,6 +16,7 @@ import { HistoryPage } from './pages/trader/HistoryPage';
 import { AccountPage } from './pages/trader/AccountPage';
 import { WithdrawalPage } from './pages/trader/WithdrawalPage';
 import { PaymentsPage } from './pages/trader/PaymentsPage';
+import { BrokersPage } from './pages/trader/BrokersPage';
 import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
 import { AdminBrokersPage } from './pages/admin/AdminBrokersPage';
 import { AdminIntegrationsPage } from './pages/admin/AdminIntegrationsPage';
@@ -92,6 +93,7 @@ export default function App() {
                 <Route path="account" element={<AccountPage />} />
                 <Route path="withdrawal" element={<WithdrawalPage />} />
                 <Route path="payments" element={<PaymentsPage />} />
+                <Route path="brokers" element={<BrokersPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
