@@ -137,6 +137,8 @@ export const INTEGRATION_GROUPS: IntegrationGroup[] = [
       { key: 'DERIV_APP_ID', label: 'App ID (for Personal Access Tokens)', type: 'string' },
       { key: 'DERIV_OAUTH_SCOPES', label: 'Scopes', type: 'string', placeholder: 'trade' },
       { key: 'DERIV_ALLOW_PAT', label: 'Allow Personal Access Token connections', type: 'bool' },
+      { key: 'DERIV_FUNDING_ENABLED', label: 'Enable funding (separate payments-scope authorization; personal use)', type: 'bool' },
+      { key: 'DERIV_FUNDING_SCOPES', label: 'Funding scopes', type: 'string', placeholder: 'payments' },
     ],
     docsUrl: 'https://developers.deriv.com/docs/intro/oauth/',
   },

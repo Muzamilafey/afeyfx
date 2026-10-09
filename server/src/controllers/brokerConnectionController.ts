@@ -6,6 +6,7 @@ import { mt5Bridge } from '../brokers/mt5/Mt5Bridge';
 import { appUrl, brokerAuth, derivRedirectUri } from '../brokers/services/BrokerAuthenticationService';
 import { brokerConnections, LIVE_CONFIRM_PHRASE } from '../brokers/services/BrokerConnectionService';
 import { brokerOrders } from '../brokers/services/BrokerOrderService';
+import { derivFunding } from '../brokers/deriv/DerivFundingService';
 import { brokerRegistry, logBrokerEvent } from '../brokers/services/BrokerRegistry';
 import { brokerMarketData } from '../brokers/services/BrokerDataServices';
 import { BrokerCapabilityModel } from '../models/BrokerRecords';
@@ -100,7 +101,12 @@ export const brokerConnectionController = {
     res.clearCookie(OAUTH_COOKIE, { path: '/api/brokers' });
     if (!code || !state) return back('#error=missing_code');
     try {
-      const { userId, tokens } = await brokerAuth.completeDerivOAuth(state, code, req.cookies?.[OAUTH_COOKIE]);
+      const { userId, tokens, purpose } = await brokerAuth.completeDerivOAuth(state, code, req.cookies?.[OAUTH_COOKIE]);
+      if (purpose === 'funding') {
+        await derivFunding.storeAuth(userId, tokens);
+        await audit({ ...req, user: { id: userId } } as never, { action: 'DERIV_FUNDING_AUTHORIZED', details: { scopes: tokens.scopes } });
+        return res.redirect(302, `${appUrl()}/deriv/funding?funding=authorized`);
+      }
       const conns = await brokerAuth.upsertDerivConnections(userId, { ...tokens, tokenType: 'oauth' });
       await audit({ ...req, user: { id: userId } } as never, { action: 'BROKER_CONNECTED', resource: 'deriv', details: { method: 'oauth', accounts: conns.length } });
       return back(`?connected=deriv&accounts=${conns.length}`);

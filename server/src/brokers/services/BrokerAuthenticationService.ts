@@ -37,6 +37,12 @@ export function derivScopes() {
   return safe.length ? safe : ['trade'];
 }
 
+/** Scopes for the separate funding authorization (never used by trading code). */
+export function fundingScopes() {
+  const s = env.DERIV_FUNDING_SCOPES.split(/[\s,]+/).filter(Boolean);
+  return s.length ? s : ['payments'];
+}
+
 export class BrokerAuthenticationService {
   secrets(c: BrokerConnectionDoc): BrokerSecrets {
     const dec = (v?: string | null) => {
@@ -56,18 +62,22 @@ export class BrokerAuthenticationService {
     return !!env.DERIV_CLIENT_ID;
   }
 
-  /** Start OAuth: returns the Deriv authorization URL and a browser-binding value for a cookie. */
-  async startDerivOAuth(userId: string) {
+  /**
+   * Start OAuth: returns the Deriv authorization URL and a browser-binding value for a cookie.
+   * purpose 'funding' asks for the separate payments-scope authorization (opt-in, personal use).
+   */
+  async startDerivOAuth(userId: string, purpose: 'trading' | 'funding' = 'trading') {
     if (!this.derivOAuthConfigured()) throw new AppError(409, 'Deriv OAuth is not configured (DERIV_CLIENT_ID)', 'DERIV_NOT_CONFIGURED');
+    if (purpose === 'funding' && !env.DERIV_FUNDING_ENABLED) throw new AppError(403, 'Funding is not enabled (DERIV_FUNDING_ENABLED)', 'FUNDING_DISABLED');
     const state = b64url(crypto.randomBytes(24));
     const verifier = b64url(crypto.randomBytes(48));
     const binding = b64url(crypto.randomBytes(24));
-    await BrokerOAuthStateModel.create({ state, user: userId, provider: 'deriv', codeVerifierEnc: encrypt(verifier), browserBindingHash: hashHex(binding), expiresAt: new Date(Date.now() + 10 * 60_000) });
+    await BrokerOAuthStateModel.create({ state, user: userId, provider: 'deriv', purpose, codeVerifierEnc: encrypt(verifier), browserBindingHash: hashHex(binding), expiresAt: new Date(Date.now() + 10 * 60_000) });
     const u = new URL(env.DERIV_AUTH_URL);
     u.searchParams.set('response_type', 'code');
     u.searchParams.set('client_id', env.DERIV_CLIENT_ID);
     u.searchParams.set('redirect_uri', derivRedirectUri());
-    u.searchParams.set('scope', derivScopes().join(' '));
+    u.searchParams.set('scope', (purpose === 'funding' ? fundingScopes() : derivScopes()).join(' '));
     u.searchParams.set('state', state);
     u.searchParams.set('code_challenge', b64url(sha256(verifier)));
     u.searchParams.set('code_challenge_method', 'S256');
@@ -81,11 +91,12 @@ export class BrokerAuthenticationService {
     const a = Buffer.from(hashHex(binding ?? ''));
     const b = Buffer.from(st.browserBindingHash);
     if (!binding || a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new AppError(400, 'Authorization was started in a different browser', 'OAUTH_STATE_INVALID');
-    const tokens = await this.tokenRequest({ grant_type: 'authorization_code', code, client_id: env.DERIV_CLIENT_ID, redirect_uri: derivRedirectUri(), code_verifier: decrypt(st.codeVerifierEnc) });
-    return { userId: st.user.toString(), tokens };
+    const purpose = (st.purpose === 'funding' ? 'funding' : 'trading') as 'trading' | 'funding';
+    const tokens = await this.tokenRequest({ grant_type: 'authorization_code', code, client_id: env.DERIV_CLIENT_ID, redirect_uri: derivRedirectUri(), code_verifier: decrypt(st.codeVerifierEnc) }, purpose === 'funding');
+    return { userId: st.user.toString(), tokens, purpose };
   }
 
-  private async tokenRequest(body: Record<string, string>) {
+  async tokenRequest(body: Record<string, string>, allowPayments = false) {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 15_000);
     let r;
@@ -98,8 +109,9 @@ export class BrokerAuthenticationService {
     }
     const j = (await r.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string };
     if (!r.ok || !j.access_token) throw new AppError(400, `Deriv authorization failed: ${j.error_description ?? j.error ?? `HTTP ${r.status}`}`, 'DERIV_AUTH_FAILED');
-    if (/payment/i.test(j.scope ?? '')) throw new AppError(400, 'Deriv granted a payment scope; refusing (trading access only)', 'DERIV_SCOPE');
-    return { accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: j.expires_in ? new Date(Date.now() + j.expires_in * 1000) : undefined, scopes: (j.scope ?? derivScopes().join(' ')).split(/\s+/).filter(Boolean) };
+    // Trading tokens must never carry payment permissions; only the separate funding flow may.
+    if (!allowPayments && /payment/i.test(j.scope ?? '')) throw new AppError(400, 'Deriv granted a payment scope; refusing (trading access only)', 'DERIV_SCOPE');
+    return { accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: j.expires_in ? new Date(Date.now() + j.expires_in * 1000) : undefined, scopes: (j.scope ?? (allowPayments ? fundingScopes() : derivScopes()).join(' ')).split(/\s+/).filter(Boolean) };
   }
 
   /** Create/refresh one connection per Deriv account available to the authorization. */

@@ -23,6 +23,20 @@ export function assertAllowedDerivRequest(msg: Record<string, unknown>) {
   if (!DERIV_WS_ALLOWED.has(type) || Object.keys(msg).some((k) => FORBIDDEN_KEY.test(k))) throw new WithdrawalForbiddenError(`Deriv API call "${type}"`);
 }
 
+/**
+ * Funding sessions (separate, opt-in `payments` authorization; never used by the trading engine):
+ * balances, statements, transfers between the user's OWN Deriv accounts/wallets and the official
+ * cashier deposit link. Withdrawals are never started through the API (Deriv's own cashier page,
+ * with its email verification, is used instead). Payment-agent and P2P calls are impossible.
+ */
+export const DERIV_FUNDING_ALLOWED = new Set(['ping', 'balance', 'statement', 'transfer_between_accounts', 'cashier']);
+const FUNDING_FORBIDDEN_KEY = /paymentagent|payment_agent|p2p|verification_code|address|dry_run|estimated_fee/i;
+export function assertAllowedFundingRequest(msg: Record<string, unknown>) {
+  const type = Object.keys(msg)[0];
+  if (!DERIV_FUNDING_ALLOWED.has(type) || Object.keys(msg).some((k) => FUNDING_FORBIDDEN_KEY.test(k))) throw new WithdrawalForbiddenError(`Deriv funding call "${type}"`);
+  if (type === 'cashier' && msg.cashier !== 'deposit') throw new WithdrawalForbiddenError('Withdrawals are made on Deriv\'s own cashier page');
+}
+
 /** Map a Deriv error code to a normalized kind. */
 export function derivErrorKind(code?: string): BrokerErrorKind {
   const c = String(code ?? '');
@@ -139,6 +153,8 @@ export class DerivSocket {
     private onStream: (m: Msg) => void,
     private onStatus: (connected: boolean, info?: string) => void,
     private opts = { requestTimeoutMs: 15_000, pingMs: 30_000, staleMs: 90_000, maxAttempts: 5 },
+    /** Which requests this socket may send (trading sessions: no payment calls at all). */
+    private guard: (msg: Msg) => void = assertAllowedDerivRequest,
   ) {}
 
   open() {
@@ -241,7 +257,7 @@ export class DerivSocket {
   }
 
   private rawSend(msg: Msg): Promise<Msg> {
-    assertAllowedDerivRequest(msg);
+    this.guard(msg);
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== 1) return reject(new BrokerError('disconnected', 'Deriv socket not connected'));
       const id = this.reqId++;

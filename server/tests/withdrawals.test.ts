@@ -44,15 +44,36 @@ describe('withdrawal permissions are never requested or used', () => {
     expect(client.transfer).not.toHaveBeenCalled();
   });
 
-  it('no source file calls a withdrawal or transfer endpoint', () => {
+  // The only exception: the owner's opt-in Deriv funding module (transfers between their OWN Deriv
+  // accounts, with a separate payments-scope token and a fresh 2FA code). It never withdraws.
+  const FUNDING_MODULE = path.join('brokers', 'deriv', 'DerivFundingService.ts');
+  const FUNDING_CALLERS = [path.join('controllers', 'derivController.ts'), path.join('controllers', 'brokerConnectionController.ts')];
+
+  it('no source file calls a withdrawal or transfer endpoint (except the reviewed Deriv funding module)', () => {
     const root = path.join(__dirname, '..', 'src');
     const offenders: string[] = [];
     for (const f of walk(root).filter((x) => x.endsWith('.ts'))) {
+      const rel = path.relative(root, f);
       const src = fs.readFileSync(f, 'utf8');
       // method calls like .withdraw( / .transfer( / sapiPostCapitalWithdrawApply(
-      if (/\.\s*\w*(withdraw|transfer)\w*\s*\(/i.test(src)) offenders.push(path.relative(root, f));
+      const calls = src.match(/\.\s*\w*(withdraw|transfer)\w*\s*\(/gi) ?? [];
+      const allowed = rel === FUNDING_MODULE || (FUNDING_CALLERS.includes(rel) && calls.every((c) => /derivFunding\.transfer\(|\.withdrawLink\(/.test(src) && /^\.\s*(transfer|withdrawLink)\s*\($/i.test(c.replace(/\s+/g, ''))));
+      if (calls.length && !allowed) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('the funding module is reachable only from its HTTP controllers — never from trading, strategies, AI or bots', () => {
+    const root = path.join(__dirname, '..', 'src');
+    const importers = walk(root)
+      .filter((x) => x.endsWith('.ts') && path.relative(root, x) !== FUNDING_MODULE)
+      .filter((x) => /DerivFundingService/.test(fs.readFileSync(x, 'utf8')))
+      .map((x) => path.relative(root, x));
+    expect(importers.sort()).toEqual([...FUNDING_CALLERS].sort());
+    // The funding module itself never sends a withdrawal: cashier is deposit-only (enforced by its socket guard).
+    const src = fs.readFileSync(path.join(root, FUNDING_MODULE), 'utf8');
+    expect(src).not.toMatch(/cashier:\s*'withdraw'/);
+    expect(src).not.toMatch(/paymentagent|p2p_/i);
   });
 
   it('Binance keys with withdrawals/transfers enabled are flagged', async () => {

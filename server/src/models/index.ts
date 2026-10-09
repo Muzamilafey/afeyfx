@@ -28,3 +28,4 @@ export * from './PaymentTransaction';
 export * from './PaymentConfig';
 export * from './BrokerConfig';
 export * from './IntegrationSetting';
+export * from './DerivFunding';

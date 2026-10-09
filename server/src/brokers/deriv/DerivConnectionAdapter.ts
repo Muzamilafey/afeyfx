@@ -42,6 +42,9 @@ export function fromDerivSymbol(s: string): string {
   return m ? `${m[1]}/${m[2]}` : s;
 }
 
+/** Read-only calls the terminal, analyst and bot may make directly (never buy/sell). */
+export const DERIV_READ_ONLY = new Set(['active_symbols', 'contracts_for', 'proposal', 'ticks_history', 'profit_table', 'statement', 'portfolio', 'balance']);
+
 const sideOf = (contractType: string): Side => (/^(MULTUP|CALL|CALLE)$/.test(contractType) ? 'buy' : 'sell');
 const num = (v: unknown) => (v === undefined || v === null || v === '' ? undefined : Number(v));
 
@@ -207,6 +210,16 @@ export class DerivConnectionAdapter implements BrokerAdapter {
     let openValue = 0;
     for (const c of this.contracts.values()) if (!this.closedResult(c)) openValue += Number(c.bid_price ?? 0);
     return { accountId: this.cfg.accountId, environment: this.cfg.environment, currency: String(b.currency ?? ''), balance, equity: balance + openValue, margin: null, freeMargin: null, marginLevel: null, leverage: null, raw: { loginid: b.loginid } };
+  }
+
+  /**
+   * Read-only Deriv request (market data, contract offerings, price quotes, history). A proposal is
+   * only a price quote: nothing is bought until submitOrder() sends `buy`.
+   */
+  async query(msg: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const type = Object.keys(msg)[0];
+    if (!DERIV_READ_ONLY.has(type)) throw new BrokerError('invalid_request', `"${type}" is not a read-only Deriv call`);
+    return this.send(msg);
   }
 
   async getInstruments(): Promise<InstrumentSpec[]> {

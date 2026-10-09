@@ -84,6 +84,16 @@ const schema = z.object({
   DERIV_OAUTH_SCOPES: z.string().default('trade'),
   /** Allow connecting with a pasted Personal Access Token (fallback when OAuth is not configured). */
   DERIV_ALLOW_PAT: bool(true),
+  /**
+   * Funding (personal use): a SEPARATE opt-in Deriv authorization with the payments scope, used only
+   * for wallet balances, transfers between your own accounts and the official cashier deposit link.
+   * The trading engine and bot never receive this token. Withdrawals always happen on Deriv's site.
+   */
+  DERIV_FUNDING_ENABLED: bool(false),
+  DERIV_FUNDING_SCOPES: z.string().default('payments'),
+  DERIV_CASHIER_DEPOSIT_URL: z.string().default('https://app.deriv.com/cashier/deposit'),
+  DERIV_CASHIER_WITHDRAW_URL: z.string().default('https://app.deriv.com/cashier/withdrawal'),
+  DERIV_CASHIER_TRANSFER_URL: z.string().default('https://app.deriv.com/cashier/account-transfer'),
   // --- MetaTrader 5 bridge ---
   MT5_BRIDGE_ENABLED: bool(true),
   /** Allowed clock skew for signed terminal requests (ms). */

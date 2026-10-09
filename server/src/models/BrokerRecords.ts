@@ -135,6 +135,8 @@ const oauthStateSchema = new Schema(
     codeVerifierEnc: { type: String, required: true },
     /** Binds the callback to the browser that started it (cookie hash). */
     browserBindingHash: { type: String, required: true },
+    /** trading = trade-scope connection; funding = separate opt-in payments-scope authorization. */
+    purpose: { type: String, enum: ['trading', 'funding'], default: 'trading' },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: false },

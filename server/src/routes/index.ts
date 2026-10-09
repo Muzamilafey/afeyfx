@@ -19,6 +19,7 @@ import { accountController, accountSchemas } from '../controllers/accountControl
 import { brokerConnectionController as bc, brokerSchemas, mt5BridgeHandler } from '../controllers/brokerConnectionController';
 import { brokerController, featuresController, integrationController, integrationSchemas } from '../controllers/integrationController';
 import { adminTraderController, adminTraderSchemas } from '../controllers/adminTraderController';
+import { derivController as dc, derivSchemas } from '../controllers/derivController';
 import { adminPaymentController, mpesaCallbackController, paymentController, paymentSchemas } from '../controllers/paymentController';
 
 /** Read access to system-wide data (strategy book, risk, logs) is admin-only. */
@@ -122,6 +123,32 @@ export function buildApiRouter() {
   cx.post('/emergency/close-positions', v(brokerSchemas.confirm), h(bc.emergencyClose));
   brokersR.use('/connections/:id', cx);
   api.use('/brokers', brokersR);
+
+  // ---- personal Deriv terminal: market data, quotes, funding (orders use /brokers/connections/:id/orders) ----
+  const derivR = Router();
+  derivR.use(...trader);
+  derivR.get('/status', h(dc.status));
+  derivR.post('/engine-account', v(derivSchemas.engine), h(dc.setEngineAccount));
+  derivR.get('/funding/status', h(dc.fundingStatus));
+  derivR.post('/funding/authorize', sessionLimiter, h(dc.fundingAuthorize));
+  derivR.delete('/funding/authorization', h(dc.fundingRevoke));
+  derivR.get('/funding/history', h(dc.fundingHistory));
+  derivR.get('/funding/withdraw-link', h(dc.withdrawLink));
+  derivR.post('/funding/:txId/verify', h(dc.fundingVerify));
+  const dx = Router({ mergeParams: true });
+  dx.get('/symbols', h(dc.symbols));
+  dx.get('/offerings', h(dc.offerings));
+  dx.get('/candles', h(dc.candles));
+  dx.post('/subscribe', v(derivSchemas.subscribe), h(dc.subscribe));
+  dx.post('/quote', brokerOrderLimiter, v(derivSchemas.quote), h(dc.quote));
+  dx.get('/profit-table', h(dc.profitTable));
+  dx.get('/funding/accounts', h(dc.fundingAccounts));
+  dx.get('/funding/deposit-link', h(dc.depositLink));
+  dx.post('/funding/sync', h(dc.fundingSync));
+  // Moving money between accounts needs a fresh 2FA code.
+  dx.post('/funding/transfer', protectedActionLimiter, h(requireFreshSecondFactor), v(derivSchemas.transfer), h(dc.transfer));
+  derivR.use('/accounts/:id', dx);
+  api.use('/deriv', derivR);
 
   // ---- admin payments console ----
   const adminTraders = Router();
