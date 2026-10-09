@@ -169,6 +169,8 @@ export function buildApiRouter() {
   api.use('/account', account);
 
   const users = Router();
+  users.post('/me/verify-email', protectedActionLimiter, requireRole('admin'), v(userSchemas.verifySelf), h(userController.verifySelf));
+  users.post('/:id/verify-email', ...admin, v(userSchemas.verifyEmail), h(userController.verifyEmail));
   users.get('/', ...admin, h(userController.list));
   users.post('/', ...admin, v(userSchemas.create), h(userController.create));
   users.patch('/:id', ...admin, v(userSchemas.update), h(userController.update));

@@ -8,6 +8,7 @@ import { useSocketEvent } from '../hooks/useSocketEvent';
 import { useTradingStatus } from '../hooks/useTradingStatus';
 import { api } from '../services/api';
 import { fmtTime } from '../utils/format';
+import { VerifySelfButton } from '../components/VerifySelfButton';
 import type { RiskStatus, SystemHealth, User } from '../types';
 
 const TABS = ['Controls', 'Live mode', 'Risk', 'AI', 'Exchanges', 'Markets', 'Users', 'Logs'] as const;
@@ -383,7 +384,7 @@ function Users() {
     <div className="grid gap-4 xl:grid-cols-3">
       <Card title="Users" className="xl:col-span-2">
         <table className="table">
-          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>2FA</th><th>Last login</th><th>Active</th></tr></thead>
+          <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Email verified</th><th>2FA</th><th>Last login</th><th>Active</th></tr></thead>
           <tbody>
             {u.data?.users.map((x) => (
               <tr key={x._id}>
@@ -393,6 +394,25 @@ function Users() {
                   <select className="rounded bg-slate-950 px-1 text-xs" value={x.role} disabled={x._id === me?._id} onChange={async (e) => { await api(`/users/${x._id}`, { method: 'PATCH', body: { role: e.target.value } }).catch((er) => setError((er as Error).message)); void u.reload(); }}>
                     {['viewer', 'trader', 'admin'].map((r) => <option key={r}>{r}</option>)}
                   </select>
+                </td>
+                <td>
+                  <div className="flex items-center gap-2">
+                    {x.emailVerified ? <Badge color="green">verified</Badge> : <Badge color="amber">not verified</Badge>}
+                    {x._id === me?._id ? (
+                      !x.emailVerified && <VerifySelfButton className="text-xs text-sky-400" />
+                    ) : (
+                      <button
+                        className={`text-xs ${x.emailVerified ? 'text-slate-400' : 'text-sky-400'}`}
+                        onClick={async () => {
+                          if (x.emailVerified && !confirm(`Mark ${x.email} as NOT verified? They will be signed out and blocked from trading until they verify again.`)) return;
+                          await api(`/users/${x._id}/verify-email`, { method: 'POST', body: { verified: !x.emailVerified } }).catch((er) => setError((er as Error).message));
+                          void u.reload();
+                        }}
+                      >
+                        {x.emailVerified ? 'Unverify' : 'Verify'}
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td>{x.twoFactorEnabled ? <Badge color="green">on</Badge> : <Badge color="amber">off</Badge>}</td>
                 <td>{fmtTime(x.lastLoginAt)}</td>

@@ -8,6 +8,7 @@ import { useAuth, isAdmin } from '../hooks/useAuth';
 import { TraderProvider, useTrader } from '../hooks/useTrader';
 import { useFeatures } from '../hooks/useFeatures';
 import { DepositModal } from '../components/payments/DepositModal';
+import { VerifySelfButton } from '../components/VerifySelfButton';
 import { useSocketStatus } from '../hooks/useSocketEvent';
 import { api } from '../services/api';
 import { fmtNum } from '../utils/format';
@@ -149,6 +150,7 @@ function Shell() {
           <button className="font-semibold underline" onClick={() => api('/auth/resend-verification', { method: 'POST' }).then(() => toast('success', 'Verification email sent'), (e) => toast('error', 'Could not send', (e as Error).message))}>
             Resend link
           </button>
+          <VerifySelfButton />
         </div>
       )}
       <div className="flex min-h-0 flex-1">

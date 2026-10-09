@@ -3,6 +3,7 @@ import { ChartCandlestick } from 'lucide-react';
 import { Logo } from '../components/BrandIcons';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useAuth } from '../hooks/useAuth';
+import { VerifySelfButton } from '../components/VerifySelfButton';
 import { useSocketStatus } from '../hooks/useSocketEvent';
 import { TradingStatusProvider, useTradingStatus } from '../hooks/useTradingStatus';
 import { ModeBanner, ModePill } from '../components/ModeBanner';
@@ -72,7 +73,12 @@ function Shell() {
               </NavLink>
             ))}
           </nav>
-          {user && !user.emailVerified && <div className="bg-amber-500/15 px-4 py-1.5 text-center text-xs text-amber-300">Verify your email address (Account & 2FA) - admin actions are blocked until you do.</div>}
+          {user && !user.emailVerified && (
+            <div className="flex flex-wrap items-center justify-center gap-2 bg-amber-500/15 px-4 py-1.5 text-center text-xs text-amber-300">
+              Verify your email address (Account & 2FA) - admin actions are blocked until you do.
+              <VerifySelfButton />
+            </div>
+          )}
           <main className="min-w-0 flex-1 p-3 sm:p-4">
             <Outlet />
           </main>

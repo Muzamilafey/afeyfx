@@ -166,6 +166,7 @@ MARKET DATA" badge is shown whenever that feed is on.
 * **Traders** sign up at `/signup` with email and password, **Continue with Google** or **Continue with GitHub**.
   Each trader gets a personal **$10,000 demo (PAPER) account**, isolated from other users and from the
   system strategy book. Placing trades requires a **verified email**.
+* **Admins can verify emails manually:** an unverified admin gets a **Verify now (admin)** button (password required), and Admin → System & Risk → Users has Verify / Unverify per user (un-verifying signs that user out). All are audited.
 * **Admins** sign in at `/admin/login` (admin accounts only) and use the admin console at `/admin`. The first
   account ever created becomes the admin, or you can run `npm --prefix server run create-admin`.
 * **Second factors:** an authenticator app (TOTP) and/or **email codes**. Both work at login and for every
