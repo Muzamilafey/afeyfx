@@ -6,7 +6,7 @@ import { Schema, model } from 'mongoose';
  */
 const tradeSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL', 'DEMO'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     exchange: String,
     symbol: { type: String, required: true, index: true },
@@ -27,6 +27,10 @@ const tradeSchema = new Schema(
     exitQuoteRate: Number,
     broker: String,
     brokerRef: String,
+    /** Broker account (user-connected) this record belongs to; null for the system book and internal accounts. */
+    connection: { type: Schema.Types.ObjectId, ref: 'BrokerConnection', index: true },
+    /** Broker-side order / deal / contract identifiers (verified with the broker). */
+    brokerOrderId: String,
     position: { type: Schema.Types.ObjectId, ref: 'Position' },
     signal: { type: Schema.Types.ObjectId, ref: 'Signal' },
     aiAnalysis: { type: Schema.Types.ObjectId, ref: 'AIAnalysis' },
@@ -38,5 +42,8 @@ const tradeSchema = new Schema(
   },
   { timestamps: true },
 );
+
+// A broker position/contract is recorded once per connection (broker reference is authoritative).
+tradeSchema.index({ connection: 1, brokerRef: 1 }, { unique: true, partialFilterExpression: { connection: { $type: 'objectId' }, brokerRef: { $type: 'string' } } });
 
 export const TradeModel = model('Trade', tradeSchema);

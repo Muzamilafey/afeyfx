@@ -60,7 +60,7 @@ export class BrokerService {
     let a = this.adapters.get(id);
     if (a) return a;
     const c = await this.config();
-    if (id === 'deriv') a = new DerivAdapter({ appId: c.deriv?.appId ?? '', token: this.secret(c.deriv?.tokenEnc), currency: c.deriv?.currency ?? 'USD', multipliers: { crypto: c.deriv?.multipliers?.crypto ?? 50, forex: c.deriv?.multipliers?.forex ?? 50, metals: c.deriv?.multipliers?.metals ?? 50 } });
+    if (id === 'deriv') a = new DerivAdapter({ appId: c.deriv?.appId ?? '', token: this.secret(c.deriv?.tokenEnc), currency: c.deriv?.currency ?? 'USD', accountId: c.deriv?.accountId ?? undefined, apiBase: env.DERIV_API_BASE, multipliers: { crypto: c.deriv?.multipliers?.crypto ?? 50, forex: c.deriv?.multipliers?.forex ?? 50, metals: c.deriv?.multipliers?.metals ?? 50 } });
     else a = new OandaBrokerAdapter({ token: env.OANDA_API_TOKEN, accountId: env.OANDA_ACCOUNT_ID, environment: env.OANDA_ENV });
     this.adapters.set(id, a);
     return a;
@@ -111,7 +111,7 @@ export class BrokerService {
           name: 'Deriv',
           configured: deriv.configured(),
           supports: ['crypto', 'forex', 'metals'],
-          settings: { appId: c.deriv?.appId ?? '', token: c.deriv?.tokenEnc ? mask(this.secret(c.deriv.tokenEnc)).slice(-8) : '', currency: c.deriv?.currency ?? 'USD', multipliers: c.deriv?.multipliers ?? { crypto: 50, forex: 50, metals: 50 } },
+          settings: { appId: c.deriv?.appId ?? '', accountId: c.deriv?.accountId ?? '', token: c.deriv?.tokenEnc ? mask(this.secret(c.deriv.tokenEnc)).slice(-8) : '', currency: c.deriv?.currency ?? 'USD', multipliers: c.deriv?.multipliers ?? { crypto: 50, forex: 50, metals: 50 } },
           lastTest: c.deriv?.lastTest ?? null,
           openPositions: open.find((o) => o._id === 'deriv')?.n ?? 0,
         },
@@ -120,9 +120,10 @@ export class BrokerService {
     };
   }
 
-  async updateDeriv(input: { appId?: string; token?: string; currency?: string; multipliers?: Partial<Record<InstrumentCategory, number>> }, adminId: string) {
+  async updateDeriv(input: { appId?: string; accountId?: string; token?: string; currency?: string; multipliers?: Partial<Record<InstrumentCategory, number>> }, adminId: string) {
     const $set: Record<string, unknown> = { updatedBy: adminId };
     if (input.appId !== undefined) $set['deriv.appId'] = input.appId.trim();
+    if (input.accountId !== undefined) $set['deriv.accountId'] = input.accountId.trim();
     if (input.token) $set['deriv.tokenEnc'] = encrypt(input.token.trim());
     if (input.currency) $set['deriv.currency'] = input.currency;
     for (const [k, v] of Object.entries(input.multipliers ?? {})) $set[`deriv.multipliers.${k}`] = v;

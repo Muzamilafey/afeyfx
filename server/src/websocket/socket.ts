@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 
 /** Market events go to everyone. Account events go to their owner; system-book events to admins only. */
 const PUBLIC_EVENTS = new Set<BusEvent>(['price', 'candle', 'candle-live', 'exchange-status']);
-const OWNED_EVENTS = new Set<BusEvent>(['order', 'trade', 'position', 'portfolio']);
+const OWNED_EVENTS = new Set<BusEvent>(['order', 'trade', 'position', 'portfolio', 'broker']);
 
 export function route(ev: BusEvent, payload: unknown): string | string[] {
   if (PUBLIC_EVENTS.has(ev)) return 'dashboard';
@@ -27,7 +27,7 @@ export function route(ev: BusEvent, payload: unknown): string | string[] {
 }
 
 /** Events streamed to authenticated dashboard clients. */
-const STREAMED: BusEvent[] = ['price', 'candle', 'candle-live', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'payment', 'system'];
+const STREAMED: BusEvent[] = ['price', 'candle', 'candle-live', 'signal', 'order', 'trade', 'position', 'portfolio', 'risk', 'exchange-status', 'ai-analysis', 'payment', 'broker', 'system'];
 
 /**
  * Socket.IO server. Connections must present a valid access token (auth.token). Price updates
@@ -65,9 +65,10 @@ export function attachSocket(server: HttpServer) {
   const handlers = STREAMED.map((ev) => {
     const fn = (payload: unknown) => {
       // Ticks are throttled per symbol (and per timeframe for forming candles) to protect clients.
-      if (ev === 'price' || ev === 'candle-live') {
-        const p = payload as { symbol?: string; exchange?: string; timeframe?: string };
-        const k = `${ev}:${p.exchange ?? ''}:${p.symbol ?? ''}:${p.timeframe ?? ''}`;
+      const bq = ev === 'broker' && (payload as { kind?: string }).kind === 'quote';
+      if (ev === 'price' || ev === 'candle-live' || bq) {
+        const p = payload as { symbol?: string; exchange?: string; timeframe?: string; connection?: string; quote?: { brokerSymbol?: string } };
+        const k = bq ? `bq:${p.connection}:${p.quote?.brokerSymbol}` : `${ev}:${p.exchange ?? ''}:${p.symbol ?? ''}:${p.timeframe ?? ''}`;
         const now = Date.now();
         if (now - (lastPrice.get(k) ?? 0) < (ev === 'price' ? 100 : 200)) return;
         lastPrice.set(k, now);

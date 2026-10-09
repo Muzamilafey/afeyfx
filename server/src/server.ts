@@ -19,6 +19,8 @@ import { tradingState } from './services/TradingState';
 import { integrationService } from './services/IntegrationService';
 import { registerIntegrationHooks } from './services/integrationHooks';
 import { forexDataService } from './marketData/ForexDataService';
+import { brokerReconciliation } from './brokers/services/BrokerReconciliationService';
+import { brokerRegistry } from './brokers/services/BrokerRegistry';
 
 async function main() {
   await connectDb();
@@ -55,7 +57,11 @@ async function main() {
     await getMarketDataService().start();
     await forexDataService.start();
   }
-  if (env.JOBS_ENABLED) jobScheduler.start();
+  if (env.JOBS_ENABLED) {
+    jobScheduler.start();
+    // After a restart, reconcile user broker accounts with the brokers (authoritative) right away.
+    void brokerReconciliation.runAll().catch((err) => logger.warn({ err: errorMessage(err) }, 'Startup broker reconciliation failed'));
+  }
 
   server.listen(env.PORT, '127.0.0.1', () => {
     logger.info({ port: env.PORT, mode: tradingState.get().mode, liveEnv: env.LIVE_TRADING_ENABLED }, 'AfeyFX server listening (PAPER mode)');
@@ -69,6 +75,7 @@ async function main() {
     jobScheduler.stop();
     getMarketDataService().stop();
     forexDataService.stop();
+    await brokerRegistry.dropAll().catch(() => undefined);
     socket.close();
     server.close();
     await exchangeRegistry.closeAll();

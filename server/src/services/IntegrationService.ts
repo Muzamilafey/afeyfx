@@ -127,6 +127,31 @@ export const INTEGRATION_GROUPS: IntegrationGroup[] = [
     docsUrl: 'https://www.oanda.com/demo-account/tpa/personal_token',
   },
   {
+    id: 'deriv',
+    title: 'Deriv broker connections',
+    description: 'Lets traders connect their own Deriv demo/real accounts. Register an OAuth app at developers.deriv.com with the redirect URL shown below; scope "trade" only (never "payment").',
+    feature: 'Connect Deriv',
+    required: ['DERIV_CLIENT_ID'],
+    fields: [
+      { key: 'DERIV_CLIENT_ID', label: 'OAuth client ID', type: 'string' },
+      { key: 'DERIV_APP_ID', label: 'App ID (for Personal Access Tokens)', type: 'string' },
+      { key: 'DERIV_OAUTH_SCOPES', label: 'Scopes', type: 'string', placeholder: 'trade' },
+      { key: 'DERIV_ALLOW_PAT', label: 'Allow Personal Access Token connections', type: 'bool' },
+    ],
+    docsUrl: 'https://developers.deriv.com/docs/intro/oauth/',
+  },
+  {
+    id: 'mt5',
+    title: 'MetaTrader 5 bridge',
+    description: 'Lets traders connect MT5 accounts through the AfeyFX Bridge Expert Advisor running in their own terminal.',
+    feature: 'Connect MT5',
+    required: [],
+    fields: [
+      { key: 'MT5_BRIDGE_ENABLED', label: 'Enable the MT5 bridge', type: 'bool' },
+      { key: 'BROKER_USER_LIVE_ALLOWED', label: 'Allow traders to enable LIVE trading on their own broker accounts (also needs LIVE_TRADING_ENABLED=true)', type: 'bool' },
+    ],
+  },
+  {
     id: 'news',
     title: 'News feeds',
     description: 'Recent headlines from RSS/Atom feeds, used as context for AI analysis.',
@@ -278,6 +303,8 @@ export class IntegrationService {
       ai: g('anthropic'),
       telegram: g('telegram'),
       news: g('news') && env.NEWS_ENABLED,
+      derivConnect: g('deriv') || (env.DERIV_ALLOW_PAT && !!env.DERIV_APP_ID),
+      mt5Connect: env.MT5_BRIDGE_ENABLED,
     };
   }
 }

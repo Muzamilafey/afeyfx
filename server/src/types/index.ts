@@ -1,4 +1,5 @@
-export type TradingMode = 'BACKTEST' | 'PAPER' | 'LIVE';
+/** DEMO = real requests to a broker's demo account (user broker connections). */
+export type TradingMode = 'BACKTEST' | 'PAPER' | 'LIVE' | 'DEMO';
 export type Side = 'buy' | 'sell';
 export type Direction = 'LONG' | 'SHORT';
 export type SignalAction = 'LONG' | 'SHORT' | 'EXIT' | 'HOLD';

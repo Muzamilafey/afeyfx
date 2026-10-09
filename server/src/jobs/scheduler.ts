@@ -15,6 +15,7 @@ import { notificationService } from '../notifications/NotificationService';
 import { arbitrageService } from '../services/ArbitrageService';
 import { paymentService } from '../payments/PaymentService';
 import { brokerService } from '../brokers/BrokerService';
+import { brokerReconciliation } from '../brokers/services/BrokerReconciliationService';
 import { logger, errorMessage } from '../utils/logger';
 
 type Task = ReturnType<typeof cron.schedule>;
@@ -57,6 +58,8 @@ export class JobScheduler {
     });
     // External brokers: positions closed broker-side (SL/TP) + reconciliation of open positions.
     this.job('broker-sync', '*/15 * * * * *', () => brokerService.sync((id, pnl, px, reason) => positionManager.closeFromBroker(id, pnl, px, reason)));
+    // User broker accounts: health checks + reconciliation against the broker (authoritative).
+    this.job('broker-accounts', '45 * * * * *', () => brokerReconciliation.runAll());
     // M-Pesa: re-query deposits whose callback never arrived; expire stale requests.
     this.job('payments-reconcile', '20 * * * * *', () => paymentService.reconcilePending());
     // Risk checks: drawdown limits and clock sync.

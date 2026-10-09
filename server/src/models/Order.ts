@@ -6,7 +6,7 @@ import { Schema, model } from 'mongoose';
  */
 const orderSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL', 'DEMO'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     idempotencyKey: { type: String, required: true, unique: true },
     exchange: { type: String, required: true },
@@ -40,6 +40,10 @@ const orderSchema = new Schema(
     /** REAL-account orders: internal fill or the external broker that executed it. */
     broker: String,
     brokerRef: String,
+    /** Broker account (user-connected) this record belongs to; null for the system book and internal accounts. */
+    connection: { type: Schema.Types.ObjectId, ref: 'BrokerConnection', index: true },
+    /** Broker-side order / deal / contract identifiers (verified with the broker). */
+    brokerOrderId: String,
     attempts: { type: Number, default: 0 },
     submittedAt: Date,
     lastCheckedAt: Date,

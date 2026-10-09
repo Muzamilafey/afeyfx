@@ -27,7 +27,8 @@ export function createApp() {
   );
   const origins = env.CLIENT_ORIGIN.split(',').map((s) => s.trim());
   app.use(cors({ origin: (o, cb) => cb(null, !o || origins.includes(o)), credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
-  app.use(express.json({ limit: '100kb' }));
+  // Signed MT5 bridge requests are verified over the exact bytes received.
+  app.use(express.json({ limit: '512kb', verify: (req, _res, buf) => void ((req as unknown as { rawBody?: Buffer }).rawBody = (req as { url?: string }).url?.startsWith('/api/bridge/') ? Buffer.from(buf) : undefined) }));
   app.use(cookieParser());
   if (env.NODE_ENV !== 'test')
     app.use(

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler as h } from '../utils/errors';
 import { requireAuth, requireFreshSecondFactor, requireRole, requireVerifiedEmail } from '../middleware/auth';
 import { validateBody as v } from '../middleware/validate';
-import { authLimiter, callbackLimiter, demoOrderLimiter, paymentLimiter, protectedActionLimiter, sessionLimiter } from '../middleware/rateLimit';
+import { authLimiter, bridgeLimiter, brokerOrderLimiter, callbackLimiter, demoOrderLimiter, paymentLimiter, protectedActionLimiter, sessionLimiter } from '../middleware/rateLimit';
 import { authController, schemas as authSchemas } from '../controllers/authController';
 import { userController, userSchemas } from '../controllers/userController';
 import { exchangeController, exchangeSchemas } from '../controllers/exchangeController';
@@ -16,6 +16,7 @@ import { riskController, riskSchemas } from '../controllers/riskController';
 import { notificationController, settingsController, settingsSchemas } from '../controllers/settingsController';
 import { systemController, systemSchemas } from '../controllers/systemController';
 import { accountController, accountSchemas } from '../controllers/accountController';
+import { brokerConnectionController as bc, brokerSchemas, mt5BridgeHandler } from '../controllers/brokerConnectionController';
 import { brokerController, featuresController, integrationController, integrationSchemas } from '../controllers/integrationController';
 import { adminPaymentController, mpesaCallbackController, paymentController, paymentSchemas } from '../controllers/paymentController';
 
@@ -62,6 +63,13 @@ export function buildApiRouter() {
   mpesa.post('/b2c/timeout/:token', h(mpesaCallbackController.b2cTimeout));
   api.use('/payments/mpesa', callbackLimiter, mpesa);
 
+  // ---- MetaTrader 5 bridge: public, every request HMAC-signed by the user's terminal ----
+  const bridge = Router();
+  for (const kind of ['hello', 'heartbeat', 'symbols', 'quotes', 'reports', 'poll'] as const) bridge.post(`/${kind}`, h(mt5BridgeHandler(kind)));
+  api.use('/bridge/mt5', bridgeLimiter, bridge);
+  // ---- Deriv OAuth callback (public redirect; bound to the user by state + browser cookie) ----
+  api.get('/brokers/deriv/callback', sessionLimiter, h(bc.derivCallback));
+
   // ---- everything below requires authentication ----
   api.use(requireAuth);
 
@@ -74,6 +82,45 @@ export function buildApiRouter() {
   payments.post('/payouts', protectedActionLimiter, ...trader, v(paymentSchemas.payout), h(paymentController.payout));
   payments.post('/payouts/:id/cancel', ...trader, h(paymentController.cancel));
   api.use('/payments', payments);
+
+  // ---- user broker connections (multi-account; every query scoped to the owner) ----
+  const brokersR = Router();
+  brokersR.use(...trader);
+  brokersR.get('/', h(bc.providers));
+  brokersR.get('/capabilities', h(bc.capabilities));
+  brokersR.get('/connections', h(bc.list));
+  brokersR.get('/assignments', h(bc.assignments));
+  brokersR.put('/assignments', v(brokerSchemas.assignment), h(bc.assign));
+  brokersR.delete('/assignments/:assignmentId', h(bc.unassign));
+  brokersR.post('/:provider/connect', sessionLimiter, v(brokerSchemas.connect), h(bc.connect));
+  const cx = Router({ mergeParams: true });
+  cx.get('/', h(bc.get));
+  cx.post('/test', h(bc.test));
+  cx.post('/sync', h(bc.sync));
+  cx.post('/disconnect', v(brokerSchemas.confirm), h(bc.disconnect));
+  cx.post('/reauthorize', h(bc.reauthorize));
+  cx.get('/account', h(bc.account));
+  cx.get('/instruments', h(bc.instruments));
+  cx.get('/quote', h(bc.quote));
+  cx.get('/positions', h(bc.positions));
+  cx.get('/orders', h(bc.orders));
+  cx.get('/trades', h(bc.trades));
+  cx.get('/health', h(bc.health));
+  cx.get('/logs', h(bc.logs));
+  cx.post('/orders/preview', v(brokerSchemas.order), h(bc.preview));
+  cx.post('/orders', brokerOrderLimiter, v(brokerSchemas.order), h(bc.placeOrder));
+  cx.post('/orders/:orderId/cancel', brokerOrderLimiter, h(bc.cancelOrder));
+  cx.post('/positions/:positionId/close', brokerOrderLimiter, h(bc.closePosition));
+  cx.post('/trading/disable', h(bc.disableTrading));
+  cx.post('/trading/enable', v(brokerSchemas.confirm), h(bc.enableTrading));
+  cx.post('/live/enable', protectedActionLimiter, h(requireFreshSecondFactor), v(brokerSchemas.live), h(bc.enableLive));
+  cx.post('/default', h(bc.setDefault));
+  cx.put('/limits', v(brokerSchemas.limits), h(bc.updateLimits));
+  cx.post('/breaker/reset', h(bc.resetBreaker));
+  cx.post('/emergency/cancel-orders', h(bc.emergencyCancel));
+  cx.post('/emergency/close-positions', v(brokerSchemas.confirm), h(bc.emergencyClose));
+  brokersR.use('/connections/:id', cx);
+  api.use('/brokers', brokersR);
 
   // ---- admin payments console ----
   const adminPayments = Router();
@@ -107,6 +154,7 @@ export function buildApiRouter() {
   brokers.put('/deriv', ...protectedAdmin, v(integrationSchemas.deriv), h(brokerController.updateDeriv));
   brokers.post('/:id/test', protectedActionLimiter, h(brokerController.test));
   brokers.put('/routes', ...protectedAdmin, v(integrationSchemas.route), h(brokerController.setRoute));
+  brokers.post('/emergency/disable-all-user-accounts', ...protectedAdmin, h(bc.adminDisableAll));
   api.use('/admin/brokers', brokers);
 
   // ---- personal demo account (any signed-in user; trading needs a verified email) ----

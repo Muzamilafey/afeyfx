@@ -19,6 +19,7 @@ import { errorMessage, logger } from '../utils/logger';
 import { positionManager } from './PositionManager';
 import { checkLiveOrder } from './LiveTradingGuard';
 import { newsService } from '../services/news/NewsService';
+import { dispatchSignalToAccounts } from '../brokers/services/BrokerStrategyDispatcher';
 
 export interface ScanOutcome {
   strategy: string;
@@ -221,13 +222,21 @@ export class TradingEngine {
       circuitBreaker: { open: !circuitBreaker.canOpenNewPositions(), reasons: circuitBreaker.reasons() },
     });
 
-    const d = decide({
+    const decisionBase = {
       strategySignal: sig,
       strategyValidation: validation,
       ai: { required: aiRequired, status: aiRes.status, analysis: aiRes.data, minConfidence: state.ai.minConfidence, requireAgreement: state.ai.requireAgreement },
       minStrategyConfidence: 0.5,
-      risk,
-    });
+    };
+    const d = decide({ ...decisionBase, risk });
+
+    // Broker accounts explicitly assigned to this strategy: same strategy + AI checks, but each
+    // account's OWN risk evaluation and quotes. Failures there never affect the system book.
+    if (sig.action === 'LONG' || sig.action === 'SHORT') {
+      const stopDistancePct = Math.abs(sig.price - sig.stopLoss!) / sig.price;
+      const takeProfitDistancePct = sig.takeProfit ? Math.abs(sig.takeProfit - sig.price) / sig.price : undefined;
+      await dispatchSignalToAccounts({ strategyKey, symbol, signalId: signal._id.toString(), aiAnalysisId: aiRes.analysisId, decision: decisionBase, direction: sig.action, stopDistancePct, takeProfitDistancePct }).catch((err) => logger.warn({ err: errorMessage(err) }, 'Broker account dispatch failed'));
+    }
     if (d.decision === 'REJECT') return reject(d.reasons, risk, aiRes.analysisId);
 
     signal.decision = 'EXECUTE';

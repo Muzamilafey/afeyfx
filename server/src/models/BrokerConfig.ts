@@ -12,6 +12,8 @@ const brokerConfigSchema = new Schema(
     routes: { crypto: route, forex: route, metals: route },
     deriv: {
       appId: String,
+      /** Deriv account_id the platform routes to (current API: one session per account). */
+      accountId: String,
       tokenEnc: String,
       currency: { type: String, default: 'USD' },
       multipliers: { crypto: { type: Number, default: 50 }, forex: { type: Number, default: 50 }, metals: { type: Number, default: 50 } },

@@ -94,7 +94,7 @@ describe('Deriv adapter', () => {
     });
     const f = await a.open({ symbol: 'EUR/USD', direction: 'LONG', units: 921, investmentUsd: 1000, stopLoss: 1.0851 * 0.99, takeProfit: 1.0851 * 1.02, clientRef: 'ref-1', price: 1.0851 });
     expect(f).toMatchObject({ status: 'FILLED', brokerRef: '123', price: 1.0851 });
-    expect(sent[0]).toMatchObject({ proposal: 1, amount: 10, basis: 'stake', contract_type: 'MULTUP', symbol: 'frxEURUSD', multiplier: 100, limit_order: { stop_loss: 10, take_profit: 20 } });
+    expect(sent[0]).toMatchObject({ proposal: 1, amount: 10, basis: 'stake', contract_type: 'MULTUP', underlying_symbol: 'frxEURUSD', multiplier: 100, limit_order: { stop_loss: 10, take_profit: 20 } });
     const c = await a.close('123');
     expect(c).toMatchObject({ status: 'CLOSED', pnlUsd: 4.2 });
   });

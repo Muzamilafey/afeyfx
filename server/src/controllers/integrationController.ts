@@ -29,6 +29,7 @@ export const integrationSchemas = {
   }),
   deriv: z.object({
     appId: z.string().regex(/^\d{1,10}$/).optional(),
+    accountId: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/).optional(),
     token: z.string().max(200).optional(),
     currency: z.literal('USD').optional(),
     multipliers: z.object({ crypto: z.number().int().min(1).max(1000), forex: z.number().int().min(1).max(1000), metals: z.number().int().min(1).max(1000) }).partial().optional(),

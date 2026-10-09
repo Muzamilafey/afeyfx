@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const positionSchema = new Schema(
   {
-    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL'], required: true, immutable: true, index: true },
+    mode: { type: String, enum: ['PAPER', 'LIVE', 'REAL', 'DEMO'], required: true, immutable: true, index: true },
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     exchange: { type: String, required: true },
     symbol: { type: String, required: true, index: true },
@@ -34,6 +34,10 @@ const positionSchema = new Schema(
     broker: { type: String, default: 'internal' },
     /** Broker-side id (Deriv contract id, OANDA trade id). */
     brokerRef: String,
+    /** Broker account (user-connected) this record belongs to; null for the system book and internal accounts. */
+    connection: { type: Schema.Types.ObjectId, ref: 'BrokerConnection', index: true },
+    /** Broker-side order / deal / contract identifiers (verified with the broker). */
+    brokerOrderId: String,
     brokerData: Schema.Types.Mixed,
     riskEvaluation: Schema.Types.Mixed,
     openedAt: { type: Date, default: Date.now },
@@ -42,5 +46,8 @@ const positionSchema = new Schema(
   },
   { timestamps: true },
 );
+
+// A broker position/contract is recorded once per connection (broker reference is authoritative).
+positionSchema.index({ connection: 1, brokerRef: 1 }, { unique: true, partialFilterExpression: { connection: { $type: 'objectId' }, brokerRef: { $type: 'string' } } });
 
 export const PositionModel = model('Position', positionSchema);

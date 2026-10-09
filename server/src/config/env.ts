@@ -72,6 +72,25 @@ const schema = z.object({
   /** Public base URL of the API (for OAuth callbacks). Defaults to APP_URL. */
   API_PUBLIC_URL: z.string().default(''),
 
+  // --- Deriv (user broker connections; current API at developers.deriv.com) ---
+  /** OAuth 2.0 client id of your registered Deriv app (Connect Deriv button). */
+  DERIV_CLIENT_ID: z.string().default(''),
+  /** Deriv App ID, required with Personal Access Tokens. */
+  DERIV_APP_ID: z.string().default(''),
+  DERIV_AUTH_URL: z.string().default('https://auth.deriv.com/oauth2/auth'),
+  DERIV_TOKEN_URL: z.string().default('https://auth.deriv.com/oauth2/token'),
+  DERIV_API_BASE: z.string().default('https://api.derivws.com/trading/v1/'),
+  /** Space-separated OAuth scopes. Trading access only: "payment" is always refused. */
+  DERIV_OAUTH_SCOPES: z.string().default('trade'),
+  /** Allow connecting with a pasted Personal Access Token (fallback when OAuth is not configured). */
+  DERIV_ALLOW_PAT: bool(true),
+  // --- MetaTrader 5 bridge ---
+  MT5_BRIDGE_ENABLED: bool(true),
+  /** Allowed clock skew for signed terminal requests (ms). */
+  MT5_BRIDGE_MAX_SKEW_MS: num(60000),
+  /** Broker accounts: allow users to enable LIVE (real-money) trading on their own connections. */
+  BROKER_USER_LIVE_ALLOWED: bool(false),
+
   ANTHROPIC_API_KEY: z.string().default(''),
   AI_ENABLED: bool(false),
   AI_MODEL: z.string().default('claude-opus-5-5'),

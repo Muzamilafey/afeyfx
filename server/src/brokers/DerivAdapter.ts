@@ -1,6 +1,7 @@
-import WebSocket from 'ws';
 import { WithdrawalForbiddenError } from '../utils/errors';
-import { logger, errorMessage } from '../utils/logger';
+import { errorMessage } from '../utils/logger';
+import { DerivRest, DerivSocket } from './deriv/DerivApi';
+import { BrokerError } from './core/types';
 import { BrokerAmbiguousError, type BrokerAdapter, type BrokerCloseResult, type BrokerFill, type BrokerOpenRequest, type BrokerPositionStatus, type BrokerTestResult } from './types';
 
 /**
@@ -20,7 +21,9 @@ export interface DerivConfig {
   token: string;
   currency: string;
   multipliers: { crypto: number; forex: number; metals: number };
-  endpoint?: string;
+  /** Platform account used for routing (Deriv account_id). */
+  accountId?: string;
+  apiBase?: string;
 }
 
 export type DerivTransport = (msg: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -37,88 +40,38 @@ export function derivSymbol(symbol: string): string | null {
 
 const category = (symbol: string) => (derivSymbol(symbol)?.startsWith('cry') ? 'crypto' : symbol.startsWith('X') ? 'metals' : 'forex');
 
-/** Persistent, authorized Deriv WebSocket connection with request/response correlation. */
-class DerivConnection {
-  private ws?: WebSocket;
-  private ready?: Promise<void>;
-  private reqId = 1;
-  private pending = new Map<number, { resolve(v: Record<string, unknown>): void; reject(e: Error): void; timer: NodeJS.Timeout }>();
-  private keepalive?: NodeJS.Timeout;
-
+/**
+ * Session on the CURRENT Deriv API (REST account list + one-time-password WebSocket), using a
+ * Personal Access Token + App ID configured by the admin for the platform's own account.
+ */
+class DerivPlatformSession {
+  private socket?: DerivSocket;
   constructor(private cfg: DerivConfig) {}
-
-  private connect() {
-    this.ready ??= new Promise<void>((resolve, reject) => {
-      const url = `${this.cfg.endpoint ?? 'wss://ws.derivws.com/websockets/v3'}?app_id=${encodeURIComponent(this.cfg.appId)}`;
-      const ws = new WebSocket(url);
-      this.ws = ws;
-      const fail = (e: Error) => {
-        this.ready = undefined;
-        for (const [, p] of this.pending) {
-          clearTimeout(p.timer);
-          p.reject(new BrokerAmbiguousError(`Deriv connection lost: ${e.message}`));
-        }
-        this.pending.clear();
-        clearInterval(this.keepalive);
-      };
-      ws.on('open', async () => {
-        try {
-          const a = await this.raw({ authorize: this.cfg.token });
-          if (a.error) throw new Error(String((a.error as { message?: string }).message ?? 'authorize failed'));
-          this.keepalive = setInterval(() => void this.raw({ ping: 1 }).catch(() => undefined), 30_000);
-          resolve();
-        } catch (err) {
-          reject(err as Error);
-          ws.close();
-        }
-      });
-      ws.on('message', (buf) => {
-        try {
-          const m = JSON.parse(buf.toString()) as Record<string, unknown>;
-          const id = Number(m.req_id);
-          const p = this.pending.get(id);
-          if (!p) return;
-          clearTimeout(p.timer);
-          this.pending.delete(id);
-          p.resolve(m);
-        } catch (err) {
-          logger.warn({ err: errorMessage(err) }, 'Bad Deriv message');
-        }
-      });
-      ws.on('error', (err) => fail(err));
-      ws.on('close', () => fail(new Error('closed')));
-    });
-    return this.ready;
+  private async accountId() {
+    if (this.cfg.accountId) return this.cfg.accountId;
+    throw new BrokerAmbiguousError('Select the Deriv account id for platform routing in Admin → Brokers');
   }
-
-  private raw(msg: Record<string, unknown>, timeoutMs = 15_000) {
-    return new Promise<Record<string, unknown>>((resolve, reject) => {
-      const id = this.reqId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new BrokerAmbiguousError('Deriv request timed out'));
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
-      this.ws!.send(JSON.stringify({ ...msg, req_id: id }));
-    });
-  }
-
   async send(msg: Record<string, unknown>) {
-    await this.connect();
-    return this.raw(msg);
+    if (!this.socket) {
+      const rest = new DerivRest(this.cfg.token, 'pat', this.cfg.appId, this.cfg.apiBase);
+      this.socket = new DerivSocket(async () => rest.otpUrl(await this.accountId()), () => undefined, () => undefined);
+    }
+    try {
+      return await this.socket.request(msg);
+    } catch (err) {
+      if (err instanceof BrokerError && err.definite) return { error: { code: err.details?.code ?? err.kind, message: err.message } };
+      throw new BrokerAmbiguousError(errorMessage(err));
+    }
   }
-
   close() {
-    clearInterval(this.keepalive);
-    this.ws?.close();
-    this.ready = undefined;
+    this.socket?.close();
   }
 }
 
 export class DerivAdapter implements BrokerAdapter {
   readonly id = 'deriv' as const;
   readonly name = 'Deriv';
-  private conn?: DerivConnection;
+  private conn?: DerivPlatformSession;
 
   constructor(
     private cfg: DerivConfig,
@@ -139,7 +92,7 @@ export class DerivAdapter implements BrokerAdapter {
     const type = Object.keys(msg)[0];
     if (!DERIV_ALLOWED.has(type) || Object.keys(msg).some((k) => FORBIDDEN.test(k))) throw new WithdrawalForbiddenError(`Deriv API call "${type}"`);
     if (this.transport) return this.transport(msg);
-    this.conn ??= new DerivConnection(this.cfg);
+    this.conn ??= new DerivPlatformSession(this.cfg);
     return this.conn.send(msg);
   }
 
@@ -158,7 +111,7 @@ export class DerivAdapter implements BrokerAdapter {
     // Prices -> amounts: P&L of a multiplier = stake x multiplier x relative price move = investment x move.
     if (req.stopLoss) limit.stop_loss = Math.min(stake, Math.max(0.01, Math.round(req.investmentUsd * (Math.abs(req.price - req.stopLoss) / req.price) * 100) / 100));
     if (req.takeProfit) limit.take_profit = Math.max(0.01, Math.round(req.investmentUsd * (Math.abs(req.takeProfit - req.price) / req.price) * 100) / 100);
-    const proposal = await this.call({ proposal: 1, amount: stake, basis: 'stake', contract_type: req.direction === 'LONG' ? 'MULTUP' : 'MULTDOWN', currency: this.cfg.currency, symbol: sym, multiplier, ...(Object.keys(limit).length ? { limit_order: limit } : {}) });
+    const proposal = await this.call({ proposal: 1, amount: stake, basis: 'stake', contract_type: req.direction === 'LONG' ? 'MULTUP' : 'MULTDOWN', currency: this.cfg.currency, underlying_symbol: sym, multiplier, ...(Object.keys(limit).length ? { limit_order: limit } : {}) });
     const pErr = this.err(proposal);
     if (pErr) return { status: 'REJECTED', rejectReason: pErr, raw: proposal };
     const pid = (proposal.proposal as { id?: string })?.id;
