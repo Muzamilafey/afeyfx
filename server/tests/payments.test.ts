@@ -3,7 +3,7 @@ import request from 'supertest';
 import { Types } from 'mongoose';
 import '../src/models';
 import { createApp, redactCallbackToken } from '../src/app';
-import { paymentService } from '../src/payments/PaymentService';
+import { callbackUrlProblem, paymentService } from '../src/payments/PaymentService';
 import { DarajaClient, MpesaError, clearMpesaTokenCache, darajaTimestamp, normalizeKenyanPhone, setMpesaFetch } from '../src/payments/MpesaClient';
 import { PaymentConfigModel } from '../src/models/PaymentConfig';
 import { PaymentModel } from '../src/models/PaymentTransaction';
@@ -15,7 +15,7 @@ import { marketDataCache } from '../src/marketData/MarketDataCache';
 import { orderExecutionService } from '../src/execution/OrderExecutionService';
 import { tradingState } from '../src/services/TradingState';
 import { circuitBreaker } from '../src/risk/CircuitBreaker';
-import { decrypt } from '../src/utils/crypto';
+import { decrypt, encrypt } from '../src/utils/crypto';
 import { reloadEnv } from '../src/config/env';
 import { connectTestDb, clearDb, disconnectTestDb } from './helpers/db';
 import { makeUser } from './helpers/api';
@@ -79,6 +79,65 @@ beforeEach(async () => {
   circuitBreaker.resetAll();
   vi.clearAllMocks();
   paymentService.setProvider(provider);
+});
+
+describe('M-Pesa callback URL checks', () => {
+  async function sandbox() {
+    await enable({ environment: 'sandbox', consumerKeyEnc: encrypt('ck'), consumerSecretEnc: encrypt('cs'), passkeyEnc: encrypt('pk'), shortcode: '174379' });
+    paymentService.setProvider(null);
+    clearMpesaTokenCache();
+  }
+  const withPublicUrl = async (url: string, fn: () => Promise<void>) => {
+    const prev = process.env.API_PUBLIC_URL;
+    process.env.API_PUBLIC_URL = url;
+    reloadEnv();
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined) delete process.env.API_PUBLIC_URL;
+      else process.env.API_PUBLIC_URL = prev;
+      reloadEnv();
+      setMpesaFetch(null);
+    }
+  };
+
+  it('only public HTTPS URLs can receive M-Pesa callbacks', () => {
+    expect(callbackUrlProblem('https://trade.example.com')).toBeNull();
+    for (const bad of ['http://localhost:5000', 'https://localhost', 'http://trade.example.com', 'https://192.168.1.20', 'https://10.0.0.5', 'https://127.0.0.1:5000', 'not a url']) expect(callbackUrlProblem(bad)).toEqual(expect.any(String));
+  });
+
+  it('a deposit is refused up front (nothing created, nothing sent) when Safaricom could not reach the callback URL', async () => {
+    await sandbox();
+    const t = await makeUser(app, 't@x.io', 'trader');
+    const fetchSpy = vi.fn();
+    setMpesaFetch(fetchSpy as never);
+    await withPublicUrl('http://localhost:5000', async () => {
+      const r = await request(app).post('/api/payments/deposits').set(t.auth).send({ amount: 20, phone: '0712345678', idempotencyKey: 'dep-local-1' });
+      expect(r.status).toBe(503);
+      expect(r.body.error.code).toBe('PAYMENTS_MISCONFIGURED');
+      expect(await PaymentModel.countDocuments()).toBe(0);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const a = await makeUser(app, 'a@x.io', 'admin', true);
+      expect((await request(app).get('/api/admin/payments/config').set(a.auth)).body.status.callbackProblem).toMatch(/public HTTPS/);
+    });
+  });
+
+  it("Daraja's refusal reason is kept for the admin; the trader sees a plain message", async () => {
+    await sandbox();
+    const t = await makeUser(app, 't@x.io', 'trader');
+    await withPublicUrl('https://trade.example.com', async () => {
+      setMpesaFetch(async (url) => {
+        const body = url.includes('/oauth/') ? { access_token: 'tok', expires_in: '3599' } : { requestId: 'r1', errorCode: '400.002.02', errorMessage: 'Bad Request - Invalid PhoneNumber' };
+        return { ok: url.includes('/oauth/'), status: url.includes('/oauth/') ? 200 : 400, text: async () => JSON.stringify(body) };
+      });
+      const r = await request(app).post('/api/payments/deposits').set(t.auth).send({ amount: 20, phone: '0712345678', idempotencyKey: 'dep-daraja-1' });
+      expect(r.body.payment).toMatchObject({ status: 'FAILED', message: 'M-Pesa could not start the payment. Please try again.' });
+      expect(JSON.stringify(r.body)).not.toContain('Invalid PhoneNumber');
+      const doc = (await PaymentModel.findById(r.body.payment.id))!;
+      expect(doc.providerMessage).toBe('Bad Request - Invalid PhoneNumber');
+      expect(doc.resultCode).toBe('400.002.02');
+    });
+  });
 });
 
 describe('M-Pesa Daraja client', () => {

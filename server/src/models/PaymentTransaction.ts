@@ -48,6 +48,8 @@ const paymentSchema = new Schema(
     receipt: { type: String, index: { unique: true, sparse: true } },
     resultCode: String,
     resultDesc: String,
+    /** Provider's own error text (admin-only), e.g. Daraja's errorMessage when an STK push is refused. */
+    providerMessage: String,
     /** Sanitized provider responses and callbacks (no credentials). */
     events: { type: [Schema.Types.Mixed], default: [] },
     /** Money-movement flags; each flips exactly once (atomic conditional updates). */

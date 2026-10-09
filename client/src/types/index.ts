@@ -76,6 +76,8 @@ export interface Payment {
   provider?: string;
   resultCode?: string;
   resultDesc?: string;
+  /** M-Pesa's own error text (admin only). */
+  providerMessage?: string;
   knownDestination?: boolean;
   credited?: boolean;
   held?: boolean;

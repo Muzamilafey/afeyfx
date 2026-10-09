@@ -54,6 +54,24 @@ function publicBaseUrl() {
   return (env.API_PUBLIC_URL || env.APP_URL || env.CLIENT_ORIGIN.split(',')[0]).trim().replace(/\/+$/, '');
 }
 
+/**
+ * Safaricom must be able to reach the callback URL: Daraja rejects (or can never deliver to) a
+ * URL that isn't public HTTPS, so a deposit started with one can never complete.
+ */
+export function callbackUrlProblem(base = publicBaseUrl()): string | null {
+  let u: URL;
+  try {
+    u = new URL(base);
+  } catch {
+    return `The public URL "${base}" is not a valid URL. Set API_PUBLIC_URL (Admin → Integrations) to your public https:// address.`;
+  }
+  const h = u.hostname;
+  const privateHost = h === 'localhost' || h.endsWith('.local') || h.endsWith('.localhost') || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h === '0.0.0.0' || h === '::1' || h === '[::1]';
+  if (u.protocol !== 'https:' || privateHost)
+    return `M-Pesa callbacks need a public HTTPS URL, but the callback base is ${u.origin}. Safaricom cannot reach localhost or plain http. Set API_PUBLIC_URL (Admin → Integrations) to a public https:// address that forwards to this server (for local testing, an HTTPS tunnel such as ngrok or Cloudflare Tunnel).`;
+  return null;
+}
+
 function newReference() {
   return String(crypto.randomInt(100_000_000, 999_999_999)) + String(crypto.randomInt(100, 999));
 }
@@ -200,6 +218,7 @@ export class PaymentService {
         depositsConfigured: this.depositsConfigured(c),
         payoutsConfigured: this.payoutsConfigured(c),
         callbackBaseIsHttps: base.startsWith('https://'),
+        callbackProblem: c.environment === 'simulated' ? null : callbackUrlProblem(base),
         simulatedAllowed: env.NODE_ENV !== 'production',
         simulatedMarketData: env.MARKET_DATA_SOURCE === 'simulated',
       },
@@ -257,6 +276,8 @@ export class PaymentService {
     if (!(client instanceof DarajaClient)) return { ok: true, message: 'Custom provider' };
     try {
       await client.token();
+      const problem = callbackUrlProblem();
+      if (problem) return { ok: false, message: `Credentials work, but deposits and payouts will fail: ${problem}` };
       return { ok: true, message: `Connected to Daraja ${c.environment}` };
     } catch (err) {
       return { ok: false, message: errorMessage(err) };
@@ -314,6 +335,7 @@ export class PaymentService {
       provider: t.provider,
       resultCode: t.resultCode,
       resultDesc: t.resultDesc,
+      providerMessage: t.providerMessage,
       checkoutRequestId: t.checkoutRequestId,
       originatorConversationId: t.originatorConversationId,
       conversationId: t.conversationId,
@@ -359,6 +381,14 @@ export class PaymentService {
     const recent = await PaymentModel.countDocuments({ user: userId, type: 'DEPOSIT', status: 'PENDING', createdAt: { $gt: new Date(Date.now() - 10 * 60_000) } });
     if (recent >= 3) throw new AppError(429, 'You have deposits waiting for confirmation. Complete them on your phone or wait a few minutes.', 'TOO_MANY_PENDING');
 
+    if (c.environment !== 'simulated' && !this.providerOverride) {
+      const problem = callbackUrlProblem();
+      if (problem) {
+        logger.error({ problem }, 'M-Pesa deposit refused: callback URL is not reachable by Safaricom');
+        void notificationService.notify('PAYMENT_ATTENTION', 'M-Pesa deposits are misconfigured', problem, { throttleKey: 'mpesa-callback-url', throttleMs: 3_600_000 });
+        throw new AppError(503, 'M-Pesa deposits are temporarily unavailable. Please try again later.', 'PAYMENTS_MISCONFIGURED');
+      }
+    }
     const amountKes = Math.ceil((amountCents * c.depositRate) / 100);
     let t: PaymentDoc;
     try {
@@ -380,6 +410,9 @@ export class PaymentService {
       const definite = err instanceof MpesaError ? err.definite : false;
       t.status = definite ? 'FAILED' : 'UNCERTAIN';
       t.resultDesc = definite ? 'M-Pesa could not start the payment. Please try again.' : 'M-Pesa did not answer in time';
+      // Daraja's own reason (e.g. "Bad Request - Invalid CallBackURL", wrong passkey) for the admin review queue.
+      t.resultCode = String(((err as MpesaError).details as { code?: unknown } | undefined)?.code ?? t.resultCode ?? '') || undefined;
+      t.providerMessage = errorMessage(err).slice(0, 300);
       t.events.push(sanitizeEvent('stk-push-error', { message: errorMessage(err), details: (err as MpesaError).details }));
       await t.save();
       logger.warn({ err: errorMessage(err), ref: t.reference }, 'STK push failed');
@@ -524,13 +557,21 @@ export class PaymentService {
     t.held = true;
     await t.save();
     this.publish(t);
-    if (c.autoApproveBelowCents > 0 && amountCents <= c.autoApproveBelowCents && knownDestination) return (await this.send(t._id.toString(), null)) ?? t;
+    // Auto-approve only when M-Pesa can actually deliver the result; otherwise it waits for an admin.
+    if (c.autoApproveBelowCents > 0 && amountCents <= c.autoApproveBelowCents && knownDestination && !this.payoutBlocker(c)) return (await this.send(t._id.toString(), null)) ?? t;
     void notificationService.notify('PAYMENT', 'Withdrawal awaiting approval', `${t.reference}: $${usd(amountCents).toFixed(2)} to ${maskPhone(phone)}`);
     return t;
   }
 
   /** Send an approved payout through M-Pesa B2C. */
+  /** Why a payout cannot be sent right now (the money stays held), or null. */
+  private payoutBlocker(c: PaymentConfigDoc) {
+    return c.environment === 'simulated' || this.providerOverride ? null : callbackUrlProblem();
+  }
+
   async send(id: string, adminId: string | null) {
+    const blocker = this.payoutBlocker(await this.config());
+    if (blocker) throw new AppError(409, blocker, 'PAYMENTS_MISCONFIGURED');
     const t = await PaymentModel.findOneAndUpdate({ _id: id, type: 'PAYOUT', status: 'PENDING', held: true }, { $set: { status: 'PROCESSING', reviewedAt: new Date(), ...(adminId ? { reviewedBy: adminId } : {}) } }, { returnDocument: 'after' });
     if (!t) throw new AppError(409, 'Only pending withdrawals can be approved', 'INVALID_STATE');
     const c = await this.config();

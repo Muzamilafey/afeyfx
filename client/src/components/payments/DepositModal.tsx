@@ -85,7 +85,7 @@ export function DepositModal() {
 
   const methodCard = (label: string, opts: { repeat?: boolean } = {}) => (
     <button
-      key={label}
+      key={opts.repeat ? `${label}-last-used` : label}
       onClick={() => setStep('form')}
       className="group flex items-center gap-3 rounded-lg bg-white px-4 py-3 text-left text-slate-900 shadow-sm ring-1 ring-slate-200 transition hover:ring-2 hover:ring-emerald-500 [html.light_&]:bg-slate-50"
     >
