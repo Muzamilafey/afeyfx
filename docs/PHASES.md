@@ -21,6 +21,7 @@ Each phase was followed by: tests → fixes → log check → functional verific
 | 15 | Completion pass | Arbitrage P&L accounting with legging protection; RSS/Atom news input and AI news sentiment; promotion gates require backtests with ≥5 trades; testnet status fallback; responsive header; screenshot set | `arbitrage.test.ts`, `news.test.ts`, stage-gate API test, headless-Chromium walkthrough (`docs/screenshots/`) |
 | 16 | Accounts, sign-in & trader terminal | Email verification; email-code 2FA; Continue with Google/GitHub; trader sign-up and separate admin portal; personal demo accounts; chart-first trader terminal; light/dark theme; dev-only simulated feed | `authExtended.test.ts`, `demoAccount.test.ts`, websocket routing test, full headless-browser walkthrough (sign-up → email verification → trades → email 2FA → admin console) |
 | 17 | Real money, markets & brokers | M-Pesa deposits (STK Push + query confirmation) and withdrawals (B2C, held funds, admin approval, review queue); REAL accounts; forex (41 pairs) + metals via OANDA with USD conversion; 18 crypto pairs; tick-by-tick candles; admin Integrations (all .env keys, hidden features); broker routing (Deriv, OANDA) behind the live kill switch | `payments.test.ts`, `forex.test.ts`, `brokers.test.ts`, `integrations.test.ts`, headless-browser walkthrough (admin setup → integrations → M-Pesa config → deposit → forex trading → withdrawal → admin approval) |
+| 18 | Multi-broker accounts | User broker connections: Deriv (current API: OAuth PKCE/PAT, OTP WebSocket, Multipliers + Rise/Fall), MT5 via the HMAC-signed AfeyFX Bridge EA; capability registry; per-account risk, breakers, reconciliation, emergency controls; DEMO mode; strategy → account routing; Brokers page; docs/BROKERS.md | `brokerConnections.test.ts` (mocked Deriv REST/WS and a simulated MT5 terminal), headless-browser walkthrough of the Brokers page. **Not verified against real broker accounts**; the EA is not compiled in CI |
 
 ## Test summary
 
@@ -50,6 +51,9 @@ Each phase was followed by: tests → fixes → log check → functional verific
   Register real OAuth apps (callback URLs in `.env.example`) and test the full round trip before relying on it.
 * **M-Pesa** was tested against mocked Daraja endpoints and the built-in simulated provider. Run the Daraja
   **sandbox** end to end (deposit, cancel, wrong PIN, payout, timeout) with your shortcode before production.
+* **User broker connections (Deriv, MT5)** were tested with mocked Deriv endpoints and a simulated MT5 terminal only;
+  the MQL5 EA has not been compiled here. Follow the verification checklist in docs/BROKERS.md on demo accounts.
+  MT5 pending/modify/cancel/partial-close have no automated test yet.
 * **Deriv and OANDA execution** was tested with mocked broker responses only. Use a Deriv demo (VRTC) account and
   an OANDA practice account first. Deriv sizing uses Multiplier contracts (stake = investment ÷ multiplier).
 * Forex prices need OANDA credentials; without them forex/metals are hidden. Weekend sessions are closed.

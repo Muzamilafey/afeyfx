@@ -421,6 +421,40 @@ describe('Deriv (current API: OAuth + OTP WebSocket)', () => {
     await expect(a.submitOrder({ clientOrderId: 'c3', brokerSymbol: 'frxEURUSD', side: 'buy', product: 'multiplier', type: 'limit', stake: 1, multiplier: 50, price: 1 })).rejects.toMatchObject({ kind: 'unsupported' });
   });
 
+  it('instruments, candles, statement, Rise/Fall purchase and sell-to-close map the broker responses (close confirmed only from the contract)', async () => {
+    const sent: Record<string, unknown>[] = [];
+    let sold = false;
+    const rpc = async (m: Record<string, unknown>) => {
+      sent.push(m);
+      if (m.balance) return { balance: { balance: 50, currency: 'USD' } };
+      if (m.active_symbols) return { active_symbols: [{ underlying_symbol: 'frxEURUSD', display_name: 'EUR/USD', market: 'forex', pip: 0.00001, exchange_is_open: 1, is_trading_suspended: 0 }, { underlying_symbol: 'R_100', display_name: 'Volatility 100 Index', market: 'synthetic_index', pip: 0.01, exchange_is_open: 1 }] };
+      if (m.ticks_history) return { candles: [{ epoch: 1760000000, open: 1.08, high: 1.09, low: 1.07, close: 1.085 }] };
+      if (m.statement) return { statement: { transactions: [{ transaction_id: 9, transaction_time: 1760000000, action_type: 'buy', amount: -2, balance_after: 48, contract_id: 55 }] } };
+      if (m.proposal) return { proposal: { id: 'PR', spot: 1.085 } };
+      if (m.buy) return { buy: { contract_id: 55, buy_price: 2 } };
+      if (m.sell) {
+        sold = true;
+        return { sell: { sold_for: 2.5 } };
+      }
+      if (m.proposal_open_contract) return { proposal_open_contract: { contract_id: 55, contract_type: 'CALL', underlying_symbol: 'frxEURUSD', buy_price: 2, entry_spot: 1.085, ...(sold ? { is_sold: 1, status: 'sold', profit: 0.5, exit_tick: 1.0861, sell_time: 1760000060 } : { is_sold: 0 }) } };
+      return {};
+    };
+    const a = new DerivConnectionAdapter({ accountId: 'DOT1', environment: 'demo', token: 't', tokenType: 'oauth' }, rpc);
+    const inst = await a.getInstruments();
+    expect(inst[0]).toMatchObject({ brokerSymbol: 'frxEURUSD', symbol: 'EUR/USD', category: 'forex', tradable: true, marketOpen: true, digits: 5 });
+    expect(inst[1]).toMatchObject({ category: 'synthetic' });
+    expect(await a.getCandles('frxEURUSD', 60, 10)).toEqual([{ timestamp: 1760000000000, open: 1.08, high: 1.09, low: 1.07, close: 1.085 }]);
+    expect((await a.getTransactions(10))[0]).toMatchObject({ id: '9', amount: -2, balanceAfter: 48, brokerPositionId: '55' });
+    // Rise/Fall needs a duration and is bought as CALL/PUT, never as a forex market order.
+    await expect(a.submitOrder({ clientOrderId: 'rf0', brokerSymbol: 'frxEURUSD', side: 'buy', product: 'rise_fall', type: 'market', stake: 2 })).rejects.toMatchObject({ kind: 'invalid_request' });
+    const r = await a.submitOrder({ clientOrderId: 'rf1', brokerSymbol: 'frxEURUSD', side: 'buy', product: 'rise_fall', type: 'market', stake: 2, duration: 5, durationUnit: 'm' });
+    expect(r).toMatchObject({ status: 'FILLED', brokerPositionId: '55', verified: true });
+    expect(sent.find((m) => m.proposal)).toMatchObject({ contract_type: 'CALL', duration: 5, duration_unit: 'm', basis: 'stake', amount: 2 });
+    await expect(a.submitOrder({ clientOrderId: 'cfd', brokerSymbol: 'frxEURUSD', side: 'buy', product: 'cfd', type: 'market', volume: 1 })).rejects.toMatchObject({ kind: 'unsupported' });
+    const closed = await a.closePosition('55');
+    expect(closed).toMatchObject({ brokerPositionId: '55', closed: true, realizedPnl: 0.5, exitPrice: 1.0861 });
+  });
+
   it('a buy that times out is looked up at Deriv before anything else (never re-bought)', async () => {
     let buys = 0;
     const rpc = async (m: Record<string, unknown>) => {

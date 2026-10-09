@@ -152,6 +152,10 @@ MARKET DATA" badge is shown whenever that feed is on.
 | Admin: withdrawal review queue | Admin: integrations (missing keys = hidden features) |
 | ![Brokers](docs/screenshots/24-admin-brokers-locked.png) | ![M-Pesa settings](docs/screenshots/23-admin-mpesa-settings.png) |
 | Admin: broker routing (locked until the env kill switch is on) | Admin: M-Pesa settings |
+| ![Brokers page](docs/screenshots/44-brokers-empty.png) | ![MT5 connected](docs/screenshots/46-brokers-positions.png) |
+| Trader: Brokers page (unconfigured providers hidden) | Trader: MT5 demo account connected (simulated terminal) |
+| ![Order preview](docs/screenshots/47-brokers-order-preview.png) | ![Emergency close](docs/screenshots/48-brokers-emergency-confirm.png) |
+| Order ticket with server-side risk preview | Emergency close confirmation |
 
 ## Accounts & sign-in
 
@@ -181,6 +185,14 @@ MARKET DATA" badge is shown whenever that feed is on.
   market price), **Deriv** (Multiplier contracts with broker-side stop loss / take profit) or **OANDA** (FOK market
   orders with attached SL/TP). Positions closed at the broker are synced; unknown broker positions are reported.
   New brokers plug in by implementing one adapter interface.
+* **Brokers page (`/brokers`):** traders connect their **own** Deriv accounts (OAuth with PKCE, or a trade-only
+  token) and MetaTrader 5 accounts (via the AfeyFX Bridge EA in their terminal; the MT5 password never leaves it).
+  Each account card shows its status, masked id, demo/real badge, balance/equity/margin, positions, orders, history,
+  logs and latency. It has per-account risk limits, a risk-previewed order ticket, strategy → account routing and
+  emergency cancel/close (closes count only when the broker confirms them). Real-money trading stays locked unless
+  `LIVE_TRADING_ENABLED` and `BROKER_USER_LIVE_ALLOWED` are both on and the user confirms with password, 2FA and a
+  typed phrase. These integrations are **mock-tested only**: see [docs/BROKERS.md](docs/BROKERS.md) for setup,
+  the MT5 protocol, the provider evaluation and the demo verification checklist.
 * **Admin → Integrations:** every `.env` integration key (SMTP, Google, GitHub, Anthropic, Telegram, OANDA, news,
   public URLs, sign-up policy) can be set in the console. Secrets are encrypted and never shown again, values apply
   immediately, and **features whose keys are missing are hidden** (sign-in buttons, AI pages, Telegram tests,
@@ -203,5 +215,6 @@ every update of the forming candle is streamed (Binance `aggTrade` + kline strea
 * [Deployment (VPS, Nginx, PM2, HTTPS, MongoDB)](docs/DEPLOYMENT.md)
 * [Operations: monitoring, backups, emergency shutdown, enabling live](docs/OPERATIONS.md)
 * [Strategies & risk](docs/STRATEGIES_AND_RISK.md)
+* [Broker connections: Deriv, MT5 bridge, provider evaluation](docs/BROKERS.md)
 * [REST API](docs/API.md)
 * [Development phases & verification log](docs/PHASES.md)

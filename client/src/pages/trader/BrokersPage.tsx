@@ -85,8 +85,8 @@ const STATUS_COLOR: Record<string, 'green' | 'amber' | 'red' | 'slate'> = { CONN
 const ERROR_TEXT: Record<string, string> = {
   access_denied: 'You declined the authorization at Deriv.',
   missing_code: 'Deriv did not return an authorization code.',
-  OAUTH_STATE: 'The sign-in link expired or was opened in another browser. Please try again.',
-  OAUTH_SCOPE: 'Deriv granted a permission AfeyFX does not accept (payments). Nothing was connected.',
+  OAUTH_STATE_INVALID: 'The sign-in link expired or was opened in another browser. Please try again.',
+  DERIV_SCOPE: 'Deriv granted a permission AfeyFX does not accept (payments). Nothing was connected.',
   failed: 'Deriv could not be connected. Please try again.',
 };
 
@@ -188,7 +188,9 @@ function ProviderCard({ p, onConnected }: { p: Provider; onConnected(creds?: Mt5
   const [env, setEnv] = useState<'demo' | 'real'>('demo');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const implemented = Object.entries(p.capabilities).filter(([, c]) => c.status === 'implemented').length;
+  const impl = Object.values(p.capabilities).filter((c) => c.status === 'implemented');
+  const implemented = impl.length;
+  const mockTested = impl.filter((c) => c.tested === 'mock').length;
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -211,7 +213,7 @@ function ProviderCard({ p, onConnected }: { p: Provider; onConnected(creds?: Mt5
     >
       <p className="text-xs text-slate-400">{p.kind}</p>
       <p className="mt-1 text-xs text-slate-500">
-        {implemented} capabilities implemented (tested with mocks{p.verified.length ? `; ${p.verified.length} verified on a live session` : ''}).{' '}
+        {implemented} capabilities implemented, {mockTested} covered by automated tests against mocked broker responses{p.verified.length ? `, ${p.verified.length} verified on a live session` : ', none verified on a live account yet'}.{' '}
         <a href={p.docs} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-sky-400 hover:underline">
           API docs <ExternalLink size={11} />
         </a>

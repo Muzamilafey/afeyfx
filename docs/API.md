@@ -48,8 +48,24 @@ Account endpoints take `?account=DEMO|REAL` (default DEMO); `GET /api/account` r
 `POST /:id/approve` (P) · `POST /:id/reject` (P, `{note}`) · `POST /:id/resolve` (P, `{outcome, note, receipt?}`) · `POST /:id/requery`
 
 ## Brokers `/api/admin/brokers` (A)
-`GET /` (routes, broker status, kill-switch state) · `PUT /deriv` (P, `{appId, token, multipliers}`) ·
+`GET /` (routes, broker status, kill-switch state) · `PUT /deriv` (P, `{appId, accountId, token, multipliers}`) ·
 `POST /:id/test` · `PUT /routes` (P, `{category: crypto|forex|metals, route: internal|deriv|oanda}`)
+
+## User broker connections `/api/brokers` (trader, verified email; every route is scoped to the caller's own connections)
+`GET /` (providers, capability registry, evaluated providers, live-gating state, Deriv redirect URI) · `GET /capabilities` ·
+`GET /connections` · `POST /:provider/connect` (`{method:'oauth'}` → `{authorizeUrl}`; `{method:'token', token}`;
+MT5 `{method:'terminal', environment}` → terminal id + secret **once**) · `GET /deriv/callback` (public OAuth return).
+Per connection `/connections/:id`: `GET /` · `POST /test` · `POST /sync` · `POST /disconnect` (`{confirm:true}`) ·
+`POST /reauthorize` · `GET /account|/instruments|/quote?symbol|/positions?status|/orders|/trades|/health|/logs` ·
+`POST /orders/preview` · `POST /orders` (`{idempotencyKey, brokerSymbol, side, product: cfd|multiplier|rise_fall, …}`;
+201 filled/open, **202 UNKNOWN** (being reconciled), 422 rejected, 200 duplicate) · `POST /orders/:orderId/cancel` ·
+`POST /positions/:positionId/close` (200 confirmed / 202 requested) · `POST /trading/disable` · `POST /trading/enable`
+(`{confirm:true}`) · `POST /live/enable` 🔐 (`{confirm:'ENABLE LIVE TRADING', password, totp|emailCode}`) ·
+`POST /default` · `PUT /limits` · `POST /breaker/reset` · `POST /emergency/cancel-orders` · `POST /emergency/close-positions` (`{confirm:true}`).
+Strategy routing: `GET /assignments` · `PUT /assignments` · `DELETE /assignments/:assignmentId`.
+Admin: `POST /api/admin/brokers/emergency/disable-all-user-accounts` (P).
+MT5 terminals: `POST /api/bridge/mt5/{hello,heartbeat,symbols,quotes,reports,poll}` (HMAC-signed; see BROKERS.md).
+Socket.IO `broker` events (`quote`, `account`, `status`, `breaker`, `synced`) go only to the owner.
 
 ## Integrations `/api/admin/integrations` (A) and features
 `GET /` (groups, masked secrets, sources, env-only list) · `PUT /` (P, `{values: {KEY: value}, reset: [KEY]}`) ·
