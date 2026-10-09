@@ -142,6 +142,10 @@ export function buildApiRouter() {
   dx.post('/subscribe', v(derivSchemas.subscribe), h(dc.subscribe));
   dx.post('/quote', brokerOrderLimiter, v(derivSchemas.quote), h(dc.quote));
   dx.get('/profit-table', h(dc.profitTable));
+  dx.post('/analyze', protectedActionLimiter, v(derivSchemas.analyze), h(dc.analyze));
+  // "Trade with AI": preview the server-built plan, then confirm. Still passes the risk engine.
+  dx.post('/ai-trade/preview', brokerOrderLimiter, v(derivSchemas.aiTrade), h(dc.aiTradePreview));
+  dx.post('/ai-trade', brokerOrderLimiter, v(derivSchemas.aiTrade), h(dc.aiTradeExecute));
   dx.get('/funding/accounts', h(dc.fundingAccounts));
   dx.get('/funding/deposit-link', h(dc.depositLink));
   dx.post('/funding/sync', h(dc.fundingSync));

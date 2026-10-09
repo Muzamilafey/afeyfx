@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 
 const aiAnalysisSchema = new Schema(
   {
-    kind: { type: String, enum: ['MARKET', 'STRATEGY_REVIEW', 'TRADE_REVIEW'], default: 'MARKET' },
+    kind: { type: String, enum: ['MARKET', 'STRATEGY_REVIEW', 'TRADE_REVIEW', 'DERIV_ANALYSIS'], default: 'MARKET' },
     symbol: { type: String, index: true },
     timeframe: String,
     model: String,

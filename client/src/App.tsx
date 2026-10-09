@@ -17,6 +17,7 @@ import { AccountPage } from './pages/trader/AccountPage';
 import { WithdrawalPage } from './pages/trader/WithdrawalPage';
 import { PaymentsPage } from './pages/trader/PaymentsPage';
 import { BrokersPage } from './pages/trader/BrokersPage';
+import { DerivAiPage } from './pages/trader/DerivAiPage';
 import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage';
 import { AdminTradersPage } from './pages/admin/AdminTradersPage';
 import { AdminBrokersPage } from './pages/admin/AdminBrokersPage';
@@ -96,6 +97,7 @@ export default function App() {
                 <Route path="withdrawal" element={<WithdrawalPage />} />
                 <Route path="payments" element={<PaymentsPage />} />
                 <Route path="brokers" element={<BrokersPage />} />
+                <Route path="ai-trade" element={<DerivAiPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -73,3 +73,58 @@ export const StrategyReviewJsonSchema = {
     caveats: { type: 'array', items: { type: 'string' } },
   },
 } as const;
+
+/**
+ * Deriv market analyst output. Validated before it is shown or used; the bot only treats it as an
+ * optional confirmation, and the deterministic risk engine always has the final say.
+ */
+const REGIMES = ['TRENDING_UP', 'TRENDING_DOWN', 'SIDEWAYS', 'HIGH_VOLATILITY', 'LOW_VOLATILITY', 'ABNORMAL'] as const;
+export const DerivAnalysisSchema = z.object({
+  symbol: z.string(),
+  timeframe: z.string(),
+  regime: z.enum(REGIMES),
+  assessment: z.enum(['BULLISH', 'BEARISH', 'NEUTRAL']),
+  summary: z.string().max(1500),
+  entryConditions: z.array(z.string().max(300)).max(8),
+  invalidationConditions: z.array(z.string().max(300)).max(8),
+  exitConditions: z.array(z.string().max(300)).max(8),
+  confidence: z.number().min(0).max(1),
+  confidenceExplanation: z.string().max(600),
+  riskReward: z.object({ available: z.boolean(), ratio: z.number().min(0).max(20).nullable(), basis: z.string().max(400) }),
+  keyLevels: z.object({ support: z.array(z.number()).max(5), resistance: z.array(z.number()).max(5) }),
+  avoidTrading: z.boolean(),
+  reasonsToAvoid: z.array(z.string().max(300)).max(8),
+  dataQualityWarnings: z.array(z.string().max(300)).max(8),
+  strategyNotes: z.array(z.string().max(300)).max(8),
+});
+export type DerivAnalysis = z.infer<typeof DerivAnalysisSchema>;
+
+const strArr = { type: 'array', items: { type: 'string' } } as const;
+export const DerivAnalysisJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['symbol', 'timeframe', 'regime', 'assessment', 'summary', 'entryConditions', 'invalidationConditions', 'exitConditions', 'confidence', 'confidenceExplanation', 'riskReward', 'keyLevels', 'avoidTrading', 'reasonsToAvoid', 'dataQualityWarnings', 'strategyNotes'],
+  properties: {
+    symbol: { type: 'string' },
+    timeframe: { type: 'string' },
+    regime: { type: 'string', enum: [...REGIMES] },
+    assessment: { type: 'string', enum: ['BULLISH', 'BEARISH', 'NEUTRAL'] },
+    summary: { type: 'string', description: '2-5 sentences citing the specific data points' },
+    entryConditions: { ...strArr, description: 'Concrete, checkable conditions that would justify an entry (may be empty)' },
+    invalidationConditions: { ...strArr, description: 'Conditions that would invalidate the assessment' },
+    exitConditions: { ...strArr, description: 'Exit conditions relevant to the product and timeframe' },
+    confidence: { type: 'number', description: 'Subjective 0-1 score; NOT a calibrated probability' },
+    confidenceExplanation: { type: 'string', description: 'Why this score, and its limitations' },
+    riskReward: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['available', 'ratio', 'basis'],
+      properties: { available: { type: 'boolean' }, ratio: { type: ['number', 'null'] }, basis: { type: 'string', description: 'How it was computed from the provided levels, or why it cannot be computed responsibly' } },
+    },
+    keyLevels: { type: 'object', additionalProperties: false, required: ['support', 'resistance'], properties: { support: { type: 'array', items: { type: 'number' } }, resistance: { type: 'array', items: { type: 'number' } } } },
+    avoidTrading: { type: 'boolean' },
+    reasonsToAvoid: strArr,
+    dataQualityWarnings: strArr,
+    strategyNotes: { ...strArr, description: 'Comments on the deterministic strategy signals and their historical performance' },
+  },
+} as const;

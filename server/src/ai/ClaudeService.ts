@@ -9,10 +9,13 @@ import {
   MarketAnalysisSchema,
   StrategyReviewJsonSchema,
   StrategyReviewSchema,
+  DerivAnalysisJsonSchema,
+  DerivAnalysisSchema,
+  type DerivAnalysis,
   type AIMarketAnalysis,
   type AIStrategyReview,
 } from './schemas';
-import { MARKET_ANALYST_SYSTEM, STRATEGY_REVIEWER_SYSTEM } from './prompts';
+import { DERIV_ANALYST_SYSTEM, MARKET_ANALYST_SYSTEM, STRATEGY_REVIEWER_SYSTEM } from './prompts';
 
 export interface MarketAnalysisInput {
   symbol: string;
@@ -129,6 +132,30 @@ export class ClaudeService {
       logger.warn({ component: 'ai', err: msg }, 'AI analysis failed');
       const doc = await AIAnalysisModel.create({ kind: 'MARKET', symbol: input.symbol, timeframe: input.timeframe, status: 'ERROR', error: msg, inputSummary }).catch(() => null);
       return { status: 'ERROR', error: msg, analysisId: doc?._id.toString() };
+    }
+  }
+
+  /** Deriv instrument analysis (structured, validated). Never places or approves orders. */
+  async analyzeDeriv(input: { symbol: string; timeframe: string; price: number; [k: string]: unknown }, meta: { user?: string } = {}): Promise<AIResult<DerivAnalysis>> {
+    if (!this.available) return { status: 'DISABLED', error: 'AI analysis disabled or ANTHROPIC_API_KEY not configured' };
+    const inputSummary = { symbol: input.symbol, timeframe: input.timeframe, price: input.price, source: 'deriv' };
+    try {
+      const r = await this.call(DERIV_ANALYST_SYSTEM, `Analyze this Deriv market snapshot.\n\n${JSON.stringify(input)}`, DerivAnalysisJsonSchema);
+      if (r.refused) return { status: 'REFUSED', error: 'Model declined the request', model: r.model };
+      const parsed = DerivAnalysisSchema.safeParse(r.json);
+      if (!parsed.success) throw new Error(`AI output failed validation: ${parsed.error.issues.map((i) => i.message).join('; ')}`);
+      const d = parsed.data;
+      if (d.symbol !== input.symbol) throw new Error('AI output symbol mismatch');
+      // Levels must be plausible for the instrument (no invented far-away prices).
+      const bad = [...d.keyLevels.support, ...d.keyLevels.resistance].filter((x) => !(x > input.price * 0.5 && x < input.price * 1.5));
+      if (bad.length) throw new Error('AI output contained implausible price levels');
+      const doc = await AIAnalysisModel.create({ kind: 'DERIV_ANALYSIS', symbol: input.symbol, timeframe: input.timeframe, model: r.model, signal: d.assessment === 'BULLISH' ? 'LONG' : d.assessment === 'BEARISH' ? 'SHORT' : 'HOLD', confidence: d.confidence, marketRegime: d.regime, reason: d.summary, output: d, inputSummary: { ...inputSummary, user: meta.user }, status: 'OK', latencyMs: r.latencyMs, usage: r.usage });
+      return { status: 'OK', data: d, analysisId: doc._id.toString(), model: r.model, latencyMs: r.latencyMs };
+    } catch (err) {
+      const msg = errorMessage(err);
+      logger.warn({ component: 'ai', err: msg }, 'Deriv AI analysis failed');
+      await AIAnalysisModel.create({ kind: 'DERIV_ANALYSIS', symbol: input.symbol, timeframe: input.timeframe, status: 'ERROR', error: msg, inputSummary }).catch(() => null);
+      return { status: 'ERROR', error: msg };
     }
   }
 

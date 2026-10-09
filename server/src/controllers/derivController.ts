@@ -7,6 +7,8 @@ import { brokerConnections } from '../brokers/services/BrokerConnectionService';
 import { brokerRegistry } from '../brokers/services/BrokerRegistry';
 import { DERIV_GRANULARITIES, derivMarket } from '../brokers/deriv/DerivMarketService';
 import { derivFunding } from '../brokers/deriv/DerivFundingService';
+import { derivAnalysis } from '../brokers/deriv/DerivAnalysisService';
+import { derivAiTrade } from '../brokers/deriv/DerivAiTradeService';
 import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 
@@ -26,6 +28,14 @@ export const derivSchemas = {
     takeProfitAmount: z.number().positive().optional(),
   }),
   subscribe: z.object({ symbol }),
+  analyze: z.object({ symbol, timeframe: z.enum(Object.keys(DERIV_GRANULARITIES) as [string, ...string[]]), ai: z.boolean().default(true) }),
+  aiTrade: z.object({
+    analysisId: z.string().regex(/^[0-9a-f]{24}$/),
+    product: z.enum(['multiplier', 'rise_fall']).default('multiplier'),
+    multiplier: z.number().int().positive().max(2000).optional(),
+    duration: z.number().int().positive().max(365).optional(),
+    durationUnit: z.enum(['t', 's', 'm', 'h', 'd']).optional(),
+  }),
   engine: z.object({ connectionId: z.string().regex(/^[0-9a-f]{24}$/) }),
   transfer: z.object({ to: z.string().regex(/^[A-Za-z0-9_-]{2,40}$/), amount: z.number().positive().max(1_000_000), currency: z.string().regex(/^[A-Za-z0-9]{2,10}$/), idempotencyKey: z.string().min(8).max(100), totp: z.string().optional(), emailCode: z.string().optional() }),
 };
@@ -83,6 +93,25 @@ export const derivController = {
   },
   async quote(req: Request, res: Response) {
     res.json({ quote: await derivMarket.quote(await owned(req), req.body as z.infer<typeof derivSchemas.quote>) });
+  },
+  /** AI market analyst (plus an always-available rule-based reading). Analysis only. */
+  async analyze(req: Request, res: Response) {
+    const b = req.body as z.infer<typeof derivSchemas.analyze>;
+    res.json(await derivAnalysis.analyze(await owned(req), b.symbol, b.timeframe, { ai: b.ai }));
+  },
+  /** "Trade with AI" step 1: the server-built plan (direction from AI, stop from ATR, stake from risk limits). */
+  async aiTradePreview(req: Request, res: Response) {
+    const { analysisId, ...opts } = req.body as z.infer<typeof derivSchemas.aiTrade>;
+    res.json({ plan: await derivAiTrade.plan(await owned(req), me(req), analysisId, opts) });
+  },
+  /** "Trade with AI" step 2: the user's click. Re-plans on the server and sends through the risk engine. */
+  async aiTradeExecute(req: Request, res: Response) {
+    const c = await owned(req);
+    const { analysisId, ...opts } = req.body as z.infer<typeof derivSchemas.aiTrade>;
+    const r = await derivAiTrade.execute(c, me(req), analysisId, opts);
+    await audit(req, { action: 'DERIV_AI_TRADE', resourceId: r.order._id.toString(), success: r.order.status !== 'REJECTED', details: { analysisId, environment: c.environment, status: r.order.status, duplicate: r.duplicate } });
+    const code = r.duplicate ? 200 : r.order.status === 'FILLED' || r.order.status === 'OPEN' ? 201 : r.order.status === 'UNKNOWN' ? 202 : 422;
+    res.status(code).json(r);
   },
   async profitTable(req: Request, res: Response) {
     res.json({ contracts: await derivMarket.profitTable(await owned(req), Number(req.query.limit ?? 50)) });
