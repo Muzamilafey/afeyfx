@@ -55,7 +55,7 @@ function AccountMenu() {
       {t === 'REAL' ? <Send size={18} className="text-emerald-400" /> : <GraduationCap size={18} className="text-amber-400" />}
       <div className="flex-1 leading-tight">
         <div className={`text-[10px] font-bold tracking-wider ${t === 'REAL' ? 'text-emerald-400' : 'text-amber-400'}`}>{t === 'REAL' ? 'LIVE ACCOUNT' : 'DEMO ACCOUNT'}</div>
-        <div className="font-mono text-sm font-bold text-slate-50">${fmtNum(accounts[t]?.equity ?? 0)}</div>
+        <div className="font-mono text-sm font-bold text-slate-50">${fmtNum(accounts[t]?.balance ?? 0)}</div>
       </div>
       {accountType === t && <Check size={16} className="text-sky-400" />}
     </button>
@@ -66,7 +66,7 @@ function AccountMenu() {
         {isReal ? <Send size={22} className="text-emerald-400" /> : <Wallet size={22} className="text-sky-400" />}
         <div className="leading-tight">
           <div className={`text-[10px] font-bold tracking-wider ${isReal ? 'text-emerald-400' : 'text-amber-400'}`}>{isReal ? 'LIVE ACCOUNT' : 'DEMO ACCOUNT'}</div>
-          <div className="font-mono text-base font-bold text-slate-50">${fmtNum(account?.equity)}</div>
+          <div className="font-mono text-base font-bold text-slate-50" title="Available balance (cash not tied up in open trades)">${fmtNum(account?.balance)}</div>
         </div>
         <ChevronDown size={16} className="text-slate-400" />
       </button>
@@ -77,10 +77,14 @@ function AccountMenu() {
             <div className="truncate text-sm font-semibold text-slate-100">{user?.email}</div>
           </div>
           {features.realAccount && <div className="mb-2 space-y-1">{(['REAL', 'DEMO'] as const).map(row)}</div>}
-          <div className="mx-3 mb-2 grid grid-cols-2 gap-2 rounded-lg bg-slate-950 p-2 text-xs">
+          <div className="mx-3 mb-2 grid grid-cols-3 gap-2 rounded-lg bg-slate-950 p-2 text-xs">
             <div>
               <div className="text-slate-500">Balance</div>
               <div className="font-mono text-slate-100">${fmtNum(account?.balance)}</div>
+            </div>
+            <div>
+              <div className="text-slate-500" title="Balance + value of open trades + their profit/loss">Equity</div>
+              <div className="font-mono text-slate-100">${fmtNum(account?.equity)}</div>
             </div>
             <div>
               <div className="text-slate-500">Open P&L</div>
