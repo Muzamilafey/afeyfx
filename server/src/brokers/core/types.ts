@@ -128,6 +128,8 @@ export interface BrokerQuote {
   ask: number;
   last?: number;
   timestamp: number;
+  /** When our server received it (ms); set when a cached quote is replayed so its age stays honest. */
+  receivedAt?: number;
 }
 
 export interface BrokerCandle {

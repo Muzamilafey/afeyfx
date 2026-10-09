@@ -37,7 +37,11 @@ export class BrokerReconciliationService {
         if (closed?.closed) {
           await brokerPositions.onClosed(conn._id.toString(), closed);
           report.settled++;
-        } else report.unresolved.push(`position ${p.brokerRef}`);
+        } else {
+          // A close the broker already confirmed may wait briefly for its closing deal (realized P&L).
+          const confirmedAt = (p.brokerData as { closeConfirmedAt?: Date } | undefined)?.closeConfirmedAt;
+          if (!confirmedAt || Date.now() - new Date(confirmedAt).getTime() > 10 * 60_000) report.unresolved.push(`position ${p.brokerRef}`);
+        }
       }
       // 3) broker → local
       for (const bp of brokerPositionsNow) {

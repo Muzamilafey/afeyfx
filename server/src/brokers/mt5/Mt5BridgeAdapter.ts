@@ -66,6 +66,15 @@ export class Mt5BridgeAdapter implements BrokerAdapter {
     mt5Bridge.events.on('status', onStatus);
     mt5Bridge.events.on('heartbeat', onHeartbeat);
     this.offs.push(() => mt5Bridge.events.off('quote', onQuote), () => mt5Bridge.events.off('status', onStatus), () => mt5Bridge.events.off('heartbeat', onHeartbeat));
+    this.replayQuotes();
+  }
+
+  /** Quotes the terminal pushed before this adapter existed, with their original receive time. */
+  private replayQuotes(symbols?: string[]) {
+    for (const [sym, q] of this.st().quotes) {
+      if (symbols && !symbols.includes(sym)) continue;
+      this.events.emit('event', { type: 'quote', quote: { brokerSymbol: sym, symbol: fromMt5Symbol(sym), bid: q.bid, ask: q.ask, timestamp: q.time, receivedAt: q.rx } } satisfies BrokerStreamEvent);
+    }
   }
 
   async disconnect() {
@@ -107,7 +116,9 @@ export class Mt5BridgeAdapter implements BrokerAdapter {
   }
 
   /** The EA pushes quotes for the symbols configured in its inputs; nothing to request. */
-  async subscribeQuotes() {}
+  async subscribeQuotes(symbols: string[]) {
+    this.replayQuotes(symbols);
+  }
   async unsubscribeQuotes() {}
 
   async getCandles(): Promise<BrokerCandle[]> {
@@ -173,7 +184,9 @@ export class Mt5BridgeAdapter implements BrokerAdapter {
       throw new BrokerError('rejected', res.rejectReason ?? 'Close rejected');
     }
     // Realized P&L comes from the closing deal(s) reported in the next heartbeat; until then report what we know.
-    return (await this.getClosedPosition(ticket)) ?? { brokerPositionId: ticket, closed: true, exitPrice: res.averagePrice, closedAt: Date.now(), reason: 'Closed' };
+    // The terminal's trade-server confirmation is authoritative even if the last heartbeat still lists it.
+    const known = await this.getClosedPosition(ticket);
+    return known?.closed ? known : { brokerPositionId: ticket, closed: true, exitPrice: res.averagePrice, closedAt: Date.now(), reason: 'Closed' };
   }
 
   async getClosedPosition(ticket: string): Promise<ClosedPositionResult | null> {

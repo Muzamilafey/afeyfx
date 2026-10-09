@@ -43,7 +43,7 @@ export interface TerminalState {
   orders: Mt5Order[];
   deals: Mt5Deal[];
   symbols: Map<string, Mt5Symbol>;
-  quotes: Map<string, { bid: number; ask: number; time: number }>;
+  quotes: Map<string, { bid: number; ask: number; time: number; rx: number }>;
   lastSeenAt: number;
   terminalTimeSkewMs?: number;
 }
@@ -171,7 +171,7 @@ export class Mt5BridgeService {
     const st = this.stateOf(id);
     for (const q of ((b.quotes as { s: string; b: number; a: number; t?: number }[]) ?? []).slice(0, 500)) {
       if (!q?.s || !(Number(q.b) > 0) || !(Number(q.a) > 0)) continue;
-      const quote = { bid: Number(q.b), ask: Number(q.a), time: Number(q.t) || Date.now() };
+      const quote = { bid: Number(q.b), ask: Number(q.a), time: Number(q.t) || Date.now(), rx: Date.now() };
       st.quotes.set(clean(q.s), quote);
       this.events.emit('quote', id, clean(q.s), quote);
     }

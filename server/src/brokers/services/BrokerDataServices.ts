@@ -34,7 +34,10 @@ export class BrokerMarketDataService {
 
   onQuote(conn: { id: string; user: string }, q: BrokerQuote) {
     const key = `${conn.id}:${q.brokerSymbol}`;
-    this.quotes.set(key, { quote: q, receivedAt: Date.now() });
+    const receivedAt = q.receivedAt ?? Date.now();
+    const prev = this.quotes.get(key);
+    if (prev && prev.receivedAt > receivedAt) return; // never replace a newer quote with a replayed one
+    this.quotes.set(key, { quote: q, receivedAt });
     publishBroker(conn.user, conn.id, 'quote', { quote: q });
     if (Date.now() - (this.persisted.get(key) ?? 0) > 5_000) {
       this.persisted.set(key, Date.now());
@@ -170,6 +173,12 @@ export class BrokerPositionService {
    */
   async onClosed(connectionId: string, r: ClosedPositionResult) {
     if (!r.closed) return null;
+    if (r.realizedPnl === undefined) {
+      // Closed at the broker but the realized P&L is not reported yet: never book a guessed result.
+      // Reconciliation books the trade once the broker reports the closing deal(s).
+      await PositionModel.updateOne({ connection: connectionId, brokerRef: r.brokerPositionId, status: 'OPEN' }, { $set: { 'brokerData.closeConfirmedAt': new Date(r.closedAt ?? Date.now()), currentPrice: r.exitPrice } });
+      return null;
+    }
     const pos = await PositionModel.findOneAndUpdate({ connection: connectionId, brokerRef: r.brokerPositionId, status: 'OPEN' }, { $set: { status: 'CLOSED', closedAt: new Date(r.closedAt ?? Date.now()), exitReason: r.reason ?? 'Closed at broker', realizedPnl: r.realizedPnl ?? 0, unrealizedPnl: 0, currentPrice: r.exitPrice } }, { returnDocument: 'after' });
     if (!pos) return null;
     let trade;
