@@ -55,6 +55,13 @@ export const marketDataController = {
     res.json({ simulated: md.simulated, exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, categories: [...new Set(markets.map((m) => m.category))], markets });
   },
 
+  /** Recent price ticks (in memory, since the server started) for tick charts. */
+  async ticks(req: Request, res: Response) {
+    const symbol = symParam(req.query.symbol);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 300) || 300, 1), 1000);
+    res.json({ symbol, ticks: marketDataCache.getTicks(venueOf(symbol), symbol, limit).map((x) => ({ timestamp: x.t, price: x.p })) });
+  },
+
   async candles(req: Request, res: Response) {
     const symbol = symParam(req.query.symbol);
     const raw = String(req.query.timeframe ?? '1h');

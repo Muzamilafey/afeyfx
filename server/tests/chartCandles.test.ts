@@ -126,3 +126,16 @@ describe('GET /api/market-data/candles with long timeframes', () => {
     expect((await request(app).get('/api/market-data/candles?symbol=BTC/USDT&timeframe=2w').set(t.auth)).status).toBe(400);
   });
 });
+
+describe('GET /api/market-data/ticks', () => {
+  it('returns recent ticks in order, de-duplicated and capped', async () => {
+    const t = await makeUser(app, 't@x.io', 'trader');
+    marketDataCache.clear();
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) marketDataCache.setTicker('binance', { symbol: 'BTC/USDT', timestamp: now + i * 1000, last: 100 + i, bid: 99 + i, ask: 101 + i });
+    marketDataCache.setTicker('binance', { symbol: 'BTC/USDT', timestamp: now + 4000, last: 104, bid: 103, ask: 105 }); // duplicate
+    const r = await request(app).get('/api/market-data/ticks?symbol=BTC/USDT&limit=3').set(t.auth);
+    expect(r.status).toBe(200);
+    expect(r.body.ticks.map((x: { price: number }) => x.price)).toEqual([102, 103, 104]);
+  });
+});

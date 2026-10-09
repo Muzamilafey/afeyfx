@@ -2,7 +2,8 @@ import { uuid } from '../../utils/uuid';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronDown, Clock, Minus, Plus, Search, X } from 'lucide-react';
-import { CandleChart, type PriceMarker } from '../../charts/CandleChart';
+import { TradingChart, type TradeMarker } from '../../charts/TradingChart';
+import { useTicks } from '../../hooks/useTicks';
 import { useToast } from '../../components/Toaster';
 import { useAuth } from '../../hooks/useAuth';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
@@ -372,7 +373,12 @@ export function TradePage() {
   const [params, setParams] = useSearchParams();
   const symbol = params.get('symbol') || markets[0]?.symbol || 'BTC/USDT';
   const [tf, setTf] = useState<ChartTf>('1m');
-  const { candles, live, loading } = useChartCandles(symbol, tf, prices[symbol]);
+  const [tickMode, setTickMode] = useState(false);
+  const chartData = useChartCandles(symbol, tf, prices[symbol]);
+  const tickData = useTicks(symbol, prices[symbol], tickMode);
+  const candles = tickMode ? tickData.ticks : chartData.candles;
+  const live = tickMode ? null : chartData.live;
+  const loading = tickMode ? tickData.loading : chartData.loading;
   const toast = useToast();
   const welcomed = useRef(false);
 
@@ -385,8 +391,8 @@ export function TradePage() {
     }
   }, [params, setParams, toast]);
 
-  const lines: PriceMarker[] = useMemo(
-    () => positions.filter((p) => p.symbol === symbol).map((p) => ({ price: p.entryPrice, color: p.direction === 'LONG' ? '#22c55e' : '#ef4444', title: p.direction === 'LONG' ? 'BUY' : 'SELL' })),
+  const markers: TradeMarker[] = useMemo(
+    () => positions.filter((p) => p.symbol === symbol).map((p) => ({ time: new Date(p.openedAt).getTime(), price: p.entryPrice, side: p.direction === 'LONG' ? 'buy' : 'sell', title: p.direction === 'LONG' ? 'BUY' : 'SELL' })),
     [positions, symbol],
   );
   const m = markets.find((x) => x.symbol === symbol);
@@ -397,8 +403,11 @@ export function TradePage() {
         <div className="z-20 flex flex-wrap items-center gap-2 p-2 sm:absolute sm:top-3 sm:left-3 sm:gap-3 sm:p-0">
           <AssetPicker symbol={symbol} onPick={(s) => setParams({ symbol: s })} />
           <div className="flex rounded-xl bg-slate-900/90 p-1 ring-1 ring-slate-800">
+            <button onClick={() => setTickMode(true)} title="Every price tick" aria-pressed={tickMode} className={`rounded-lg px-2 py-1 text-xs font-bold sm:px-2.5 ${tickMode ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-100'}`}>
+              1t
+            </button>
             {CHART_TFS.map((t) => (
-              <button key={t.tf} onClick={() => setTf(t.tf)} title={TF_TITLE[t.tf]} aria-pressed={tf === t.tf} className={`rounded-lg px-2 py-1 text-xs font-bold sm:px-2.5 ${tf === t.tf ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-100'}`}>
+              <button key={t.tf} onClick={() => (setTf(t.tf), setTickMode(false))} title={TF_TITLE[t.tf]} aria-pressed={!tickMode && tf === t.tf} className={`rounded-lg px-2 py-1 text-xs font-bold sm:px-2.5 ${!tickMode && tf === t.tf ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-100'}`}>
                 {t.label}
               </button>
             ))}
@@ -409,7 +418,7 @@ export function TradePage() {
           {m && <span className="text-[11px] text-slate-500">{m.name ? `${m.name} · ` : ''}Spread {fmtPct(m.spreadPct, 3)}{m.category === 'crypto' ? ` · Vol 24h $${fmtNum(m.volume24h, 0)}` : ''}</span>}
         </div>
         <div className="min-h-[340px] flex-1 sm:min-h-0 sm:pt-16">
-          {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill precision={pricePrecision(markets, symbol)} /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">{loading ? 'Loading market data…' : 'No candles for this timeframe yet'}</div>}
+          {candles.length ? <TradingChart candles={candles} live={live} tickMode={tickMode} markers={markers} drawKey={symbol} precision={pricePrecision(markets, symbol)} /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">{loading ? 'Loading market data…' : tickMode ? 'Waiting for the first tick…' : 'No candles for this timeframe yet'}</div>}
         </div>
       </section>
       <aside className="flex w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 lg:w-[320px] lg:border-t-0 lg:border-l">

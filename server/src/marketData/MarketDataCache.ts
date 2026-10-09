@@ -11,6 +11,8 @@ export class MarketDataCache {
   private tickers = new Map<string, { data: Ticker; receivedAt: number }>();
   private books = new Map<string, { data: OrderBook; receivedAt: number }>();
   private candles = new Map<string, Candle[]>();
+  /** Recent ticks per symbol (for tick charts). */
+  private ticks = new Map<string, { t: number; p: number }[]>();
   private extras = new Map<string, { fundingRate?: number; openInterest?: number; updatedAt: number }>();
   constructor(private maxCandles = 1000) {}
 
@@ -19,7 +21,22 @@ export class MarketDataCache {
     // Drop out-of-order / duplicate events.
     if (prev && t.timestamp < prev.data.timestamp) return false;
     this.tickers.set(key(exchange, t.symbol), { data: t, receivedAt: Date.now() });
+    const px = t.last || (t.bid && t.ask ? (t.bid + t.ask) / 2 : 0);
+    if (px > 0) {
+      const k = key(exchange, t.symbol);
+      const buf = this.ticks.get(k) ?? [];
+      const last = buf[buf.length - 1];
+      if (!last || last.t !== t.timestamp || last.p !== px) {
+        buf.push({ t: t.timestamp, p: px });
+        if (buf.length > 1000) buf.splice(0, buf.length - 1000);
+        this.ticks.set(k, buf);
+      }
+    }
     return true;
+  }
+
+  getTicks(exchange: string, symbol: string, limit = 500) {
+    return (this.ticks.get(key(exchange, symbol)) ?? []).slice(-limit);
   }
 
   getTicker(exchange: string, symbol: string) {
@@ -73,6 +90,7 @@ export class MarketDataCache {
 
   clear() {
     this.tickers.clear();
+    this.ticks.clear();
     this.books.clear();
     this.candles.clear();
     this.extras.clear();

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api } from '../services/api';
 import { useSocketEvent } from './useSocketEvent';
 import { useFeatures } from './useFeatures';
+import { useAuth } from './useAuth';
 import { useToast } from '../components/Toaster';
 import type { AccountType, MarketSummary, Payment, PaymentPublicConfig, Position, TraderAccount } from '../types';
 
@@ -57,6 +58,8 @@ export function TraderProvider({ children }: { children: ReactNode }) {
   const [depositOpen, setDepositOpen] = useState(false);
   const [lastPayment, setLastPayment] = useState<Payment | null>(null);
   // The REAL account is only offered when the admin has set up payments or real trading.
+  const { user } = useAuth();
+  const userId = user?._id;
   const effectiveType: AccountType = features.realAccount ? accountType : 'DEMO';
 
   const setAccountType = useCallback((t: AccountType) => {
@@ -96,7 +99,9 @@ export function TraderProvider({ children }: { children: ReactNode }) {
 
   useSocketEvent<PriceTick>('price', (p) => setPrices((m) => ({ ...m, [p.symbol]: p })));
   // Account events arrive only for this user (server-side routing).
-  useSocketEvent<TraderAccount & { mode: string }>('portfolio', (p) => {
+  useSocketEvent<TraderAccount & { mode: string; owner?: string | null }>('portfolio', (p) => {
+    // Admins also receive the platform's system book (owner null): never show it as the trader's own balance.
+    if (!p.owner || p.owner !== userId) return;
     const type: AccountType = p.mode === 'REAL' ? 'REAL' : 'DEMO';
     setAccounts((a) => ({ ...a, [type]: { ...p, type } }));
   });

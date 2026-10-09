@@ -239,6 +239,7 @@ export function buildApiRouter() {
   const md = Router();
   md.get('/summary', h(marketDataController.summary));
   md.get('/candles', h(marketDataController.candles));
+  md.get('/ticks', h(marketDataController.ticks));
   md.get('/orderbook', h(marketDataController.orderbook));
   md.get('/analysis', h(marketDataController.analysis));
   api.use('/market-data', md);
