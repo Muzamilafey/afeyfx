@@ -156,6 +156,8 @@ MARKET DATA" badge is shown whenever that feed is on.
 | Trader: Brokers page (unconfigured providers hidden) | Trader: MT5 demo account connected (simulated terminal) |
 | ![Order preview](docs/screenshots/47-brokers-order-preview.png) | ![Emergency close](docs/screenshots/48-brokers-emergency-confirm.png) |
 | Order ticket with server-side risk preview | Emergency close confirmation |
+| ![1 week](docs/screenshots/51-terminal-1w.png) | ![1 month](docs/screenshots/52-terminal-1m.png) |
+| Weekly candles (simulated data) | Monthly candles (simulated data) |
 
 ## Accounts & sign-in
 
@@ -206,7 +208,10 @@ Crypto (18 USDT pairs by default, `TRADER_CRYPTO_SYMBOLS`), forex majors, crosse
 USD/JPY, EUR/GBP, GBP/JPY, AUD/NZD, USD/ZAR, … 41 pairs) and metals (XAU, XAG, XPT, XPD). Forex and metal prices come
 from OANDA v20 pricing; markets outside the forex session are marked **closed** and refuse orders. P&L on pairs quoted
 in another currency (e.g. USD/JPY) is converted to USD at live rates. Charts update **tick by tick**: every trade and
-every update of the forming candle is streamed (Binance `aggTrade` + kline streams; OANDA quotes).
+every update of the forming candle is streamed (Binance `aggTrade` + kline streams; OANDA quotes). Chart timeframes: 1m, 5m, 15m,
+1h, **4h, 1 day, 1 week and 1 month**. The long ones are calendar-aligned in UTC (weeks start Monday, months on
+the 1st). They come from the venue's own candles (Binance, OANDA H4/D/W/M) or from stored hourly candles, and the
+forming candle still moves on every tick.
 
 ## Documentation
 

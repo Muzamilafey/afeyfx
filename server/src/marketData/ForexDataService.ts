@@ -82,6 +82,12 @@ export class ForexDataService {
     this.timers.push(setInterval(() => (this.lastOkAt = Date.now()), 5_000));
   }
 
+  /** Long-timeframe chart candles straight from OANDA (null when OANDA is not in use). */
+  async chartCandles(symbol: string, granularity: 'H4' | 'D' | 'W' | 'M', count: number) {
+    if (!this.client) return null;
+    return this.client.chartCandles(this.instrument(symbol), granularity, count);
+  }
+
   private instrument(symbol: string) {
     return symbol.replace('/', '_');
   }

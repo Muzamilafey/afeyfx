@@ -5,20 +5,16 @@ import { CandleChart, type PriceMarker } from '../../charts/CandleChart';
 import { useToast } from '../../components/Toaster';
 import { useAuth } from '../../hooks/useAuth';
 import { useSocketEvent } from '../../hooks/useSocketEvent';
+import { CHART_TFS, useChartCandles, type ChartTf } from '../../hooks/useChartCandles';
 import { livePnl, pricePrecision, useTrader } from '../../hooks/useTrader';
 import { useFeatures } from '../../hooks/useFeatures';
 import { MarketIcon } from '../../components/MarketIcon';
 import { api } from '../../services/api';
 import { fmtNum, fmtPct, fmtPriceDp, fmtSigned, pnlClass } from '../../utils/format';
-import type { Candle, Position, Trade } from '../../types';
+import type { Position, Trade } from '../../types';
 
-const TFS = [
-  { tf: '1m', ms: 60_000 },
-  { tf: '5m', ms: 300_000 },
-  { tf: '15m', ms: 900_000 },
-  { tf: '1h', ms: 3_600_000 },
-] as const;
-type Tf = (typeof TFS)[number]['tf'];
+
+const TF_TITLE: Record<ChartTf, string> = { '1m': '1 minute', '5m': '5 minutes', '15m': '15 minutes', '1h': '1 hour', '4h': '4 hours', '1d': '1 day', '1w': '1 week (from Monday, UTC)', '1M': '1 month (UTC)' };
 
 function UtcClock() {
   const [now, setNow] = useState(() => new Date());
@@ -295,10 +291,8 @@ export function TradePage() {
   const { markets, prices, positions, account } = useTrader();
   const [params, setParams] = useSearchParams();
   const symbol = params.get('symbol') || markets[0]?.symbol || 'BTC/USDT';
-  const [tf, setTf] = useState<Tf>('1m');
-  const tfMs = TFS.find((t) => t.tf === tf)!.ms;
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [live, setLive] = useState<Candle | null>(null);
+  const [tf, setTf] = useState<ChartTf>('1m');
+  const { candles, live, loading } = useChartCandles(symbol, tf, prices[symbol]);
   const toast = useToast();
   const welcomed = useRef(false);
 
@@ -310,46 +304,6 @@ export function TradePage() {
       setParams(params, { replace: true });
     }
   }, [params, setParams, toast]);
-
-  useEffect(() => {
-    let alive = true;
-    setCandles([]);
-    setLive(null);
-    api<{ candles: Candle[] }>(`/market-data/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}&limit=500`)
-      .then((r) => alive && setCandles(r.candles))
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [symbol, tf]);
-
-  // Build the forming candle from streaming ticks.
-  const tick = prices[symbol];
-  useEffect(() => {
-    if (!tick) return;
-    const bucket = Math.floor(tick.timestamp / tfMs) * tfMs;
-    setLive((c) => {
-      if (!c || c.timestamp !== bucket) {
-        const open = c?.close ?? candles[candles.length - 1]?.close ?? tick.last;
-        return { timestamp: bucket, open, high: Math.max(open, tick.last), low: Math.min(open, tick.last), close: tick.last, volume: 0 };
-      }
-      if (c.close === tick.last) return c;
-      return { ...c, high: Math.max(c.high, tick.last), low: Math.min(c.low, tick.last), close: tick.last };
-    });
-  }, [tick, tfMs, candles]);
-
-  useSocketEvent<Candle & { symbol: string; timeframe: string }>('candle', (c) => {
-    if (c.symbol === symbol && c.timeframe === tf) setCandles((cs) => [...cs.filter((x) => x.timestamp !== c.timestamp), { timestamp: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }].slice(-800));
-  });
-  // The exchange's own forming candle (true OHLC + volume), merged with tick-level moves in between.
-  useSocketEvent<Candle & { symbol: string; timeframe: string }>('candle-live', (c) => {
-    if (c.symbol !== symbol || c.timeframe !== tf) return;
-    setLive((cur) => {
-      const base = { timestamp: c.timestamp, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume };
-      if (!cur || cur.timestamp !== c.timestamp) return base;
-      return { ...base, high: Math.max(base.high, cur.high), low: Math.min(base.low, cur.low), close: c.close };
-    });
-  });
 
   const lines: PriceMarker[] = useMemo(
     () => positions.filter((p) => p.symbol === symbol).map((p) => ({ price: p.entryPrice, color: p.direction === 'LONG' ? '#22c55e' : '#ef4444', title: p.direction === 'LONG' ? 'BUY' : 'SELL' })),
@@ -363,9 +317,9 @@ export function TradePage() {
         <div className="z-20 flex flex-wrap items-center gap-2 p-2 sm:absolute sm:top-3 sm:left-3 sm:gap-3 sm:p-0">
           <AssetPicker symbol={symbol} onPick={(s) => setParams({ symbol: s })} />
           <div className="flex rounded-xl bg-slate-900/90 p-1 ring-1 ring-slate-800">
-            {TFS.map((t) => (
-              <button key={t.tf} onClick={() => setTf(t.tf)} className={`rounded-lg px-2.5 py-1 text-xs font-bold ${tf === t.tf ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-100'}`}>
-                {t.tf}
+            {CHART_TFS.map((t) => (
+              <button key={t.tf} onClick={() => setTf(t.tf)} title={TF_TITLE[t.tf]} aria-pressed={tf === t.tf} className={`rounded-lg px-2 py-1 text-xs font-bold sm:px-2.5 ${tf === t.tf ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-100'}`}>
+                {t.label}
               </button>
             ))}
           </div>
@@ -375,7 +329,7 @@ export function TradePage() {
           {m && <span className="text-[11px] text-slate-500">{m.name ? `${m.name} · ` : ''}Spread {fmtPct(m.spreadPct, 3)}{m.category === 'crypto' ? ` · Vol 24h $${fmtNum(m.volume24h, 0)}` : ''}</span>}
         </div>
         <div className="min-h-[340px] flex-1 sm:min-h-0 sm:pt-16">
-          {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill precision={pricePrecision(markets, symbol)} /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading market data…</div>}
+          {candles.length ? <CandleChart candles={candles} live={live} lines={lines} fill precision={pricePrecision(markets, symbol)} /> : <div className="flex h-full items-center justify-center text-sm text-slate-500">{loading ? 'Loading market data…' : 'No candles for this timeframe yet'}</div>}
         </div>
       </section>
       <aside className="flex w-full shrink-0 flex-col border-t border-slate-800 bg-slate-950 lg:w-[320px] lg:border-t-0 lg:border-l">

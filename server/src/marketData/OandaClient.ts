@@ -66,4 +66,15 @@ export class OandaClient {
       .filter((c) => c.complete && c.mid)
       .map((c) => ({ timestamp: Math.round(Number(c.time) * 1000), open: Number(c.mid!.o), high: Number(c.mid!.h), low: Number(c.mid!.l), close: Number(c.mid!.c), volume: Number(c.volume) }));
   }
+
+  /**
+   * Chart candles at any OANDA granularity (H4, D, W, M), UTC-aligned (days at 00:00, weeks on Monday),
+   * including the still-forming last candle (`complete: false`).
+   */
+  async chartCandles(instrument: string, granularity: 'H4' | 'D' | 'W' | 'M', count = 300): Promise<(Candle & { complete: boolean })[]> {
+    const body = await this.get(`/v3/instruments/${encodeURIComponent(instrument)}/candles?granularity=${granularity}&count=${Math.min(count, 5000)}&price=M&alignmentTimezone=UTC&dailyAlignment=0&weeklyAlignment=Monday`);
+    return ((body.candles ?? []) as { time: string; complete: boolean; volume: number; mid?: { o: string; h: string; l: string; c: string } }[])
+      .filter((c) => c.mid)
+      .map((c) => ({ timestamp: Math.round(Number(c.time) * 1000), open: Number(c.mid!.o), high: Number(c.mid!.h), low: Number(c.mid!.l), close: Number(c.mid!.c), volume: Number(c.volume), complete: c.complete }));
+  }
 }

@@ -7,6 +7,7 @@ import { CandleStore } from '../marketData/CandleStore';
 import { marketRegimeService } from '../services/analysis/MarketRegimeService';
 import { technicalAnalysis } from '../services/analysis/TechnicalAnalysisService';
 import { TIMEFRAMES, type Timeframe } from '../types';
+import { chartCandleService, isChartTimeframe } from '../marketData/ChartCandles';
 import { AppError } from '../utils/errors';
 import { audit } from '../services/AuditService';
 import { FOREX_VENUE, instruments, precisionFor, venueOf } from '../marketData/instruments';
@@ -54,9 +55,16 @@ export const marketDataController = {
 
   async candles(req: Request, res: Response) {
     const symbol = symParam(req.query.symbol);
-    const tf = tfParam(req.query.timeframe);
+    const raw = String(req.query.timeframe ?? '1h');
     const limit = Math.min(Number(req.query.limit ?? 300), 2000);
     const venue = venueOf(symbol);
+    // Long chart timeframes (4h / 1d / 1w / 1M) the engine doesn't track: calendar-aligned chart candles.
+    if (isChartTimeframe(raw) && !getMarketDataService().timeframes.includes(raw as Timeframe)) {
+      const r = await chartCandleService.get(symbol, raw, limit);
+      res.json({ symbol, timeframe: raw, candles: r.candles, forming: r.forming, source: r.source });
+      return;
+    }
+    const tf = tfParam(raw);
     let candles = marketDataCache.getCandles(venue, symbol, tf).slice(-limit);
     if (candles.length < limit) {
       const stored = await CandleStore.latest(venue, symbol, tf, limit);

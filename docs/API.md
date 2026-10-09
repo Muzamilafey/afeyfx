@@ -81,7 +81,7 @@ Socket.IO `broker` events (`quote`, `account`, `status`, `breaker`, `synced`) go
 
 ## Markets & market data
 `GET /api/markets` (V) · `PATCH /api/markets/:id` (A)
-`GET /api/market-data/summary` · `/candles?symbol&timeframe&limit` · `/orderbook?symbol` · `/analysis?symbol&timeframe` (indicators + regime)
+`GET /api/market-data/summary` · `/candles?symbol&timeframe&limit` (timeframe `1m…1h`, plus chart-only `4h`, `1d`, `1w`, `1M`: UTC calendar buckets, response adds `forming` and `source: exchange|oanda|aggregated|simulated`) · `/orderbook?symbol` · `/analysis?symbol&timeframe` (indicators + regime)
 
 ## Strategies `/api/strategies`
 `GET /` (V) · `PATCH /:key` (A) `{enabled?,symbols?,timeframes?,params?,allowedRegimes?,requireAiConfirmation?}` ·

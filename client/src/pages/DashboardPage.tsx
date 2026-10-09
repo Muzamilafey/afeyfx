@@ -3,16 +3,19 @@ import { Badge, Card, Empty, ErrorText, Stat, signalColor } from '../components/
 import { CandleChart } from '../charts/CandleChart';
 import { useApi } from '../hooks/useApi';
 import { useSocketEvent } from '../hooks/useSocketEvent';
+import { CHART_TFS, useChartCandles, type ChartTf } from '../hooks/useChartCandles';
 import { useAuth, canTrade } from '../hooks/useAuth';
 import { useTradingStatus } from '../hooks/useTradingStatus';
 import { api } from '../services/api';
 import { fmtNum, fmtPct, fmtPrice, fmtSigned, fmtTime, pnlClass } from '../utils/format';
 import { useFeatures } from '../hooks/useFeatures';
-import type { AIAnalysis, Candle, MarketSummary, Portfolio, Position, RiskStatus, Signal, Trade } from '../types';
+import type { AIAnalysis, MarketSummary, Portfolio, Position, RiskStatus, Signal, Trade } from '../types';
 
 interface MarketAnalysisResp {
   regime: { regime: string; reason: string };
 }
+
+const ENGINE_TFS = new Set<string>(['1m', '3m', '5m', '15m', '30m', '1h']);
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -30,15 +33,19 @@ export function DashboardPage() {
 
   const symbols = markets.data?.markets.map((m) => m.symbol) ?? [];
   const [symbol, setSymbol] = useState<string>('');
-  const [tf, setTf] = useState('1h');
+  const [tf, setTf] = useState<ChartTf>('1h');
   const active = symbol || symbols[0] || 'BTC/USDT';
-  const candles = useApi<{ candles: Candle[] }>(`/market-data/candles?symbol=${encodeURIComponent(active)}&timeframe=${tf}&limit=300`, [active, tf]);
-  const analysis = useApi<MarketAnalysisResp>(`/market-data/analysis?symbol=${encodeURIComponent(active)}&timeframe=${tf}`, [active, tf]);
+  const [tick, setTick] = useState<{ symbol: string; last: number; timestamp: number }>();
+  const chart = useChartCandles(active, tf, tick?.symbol === active ? tick : undefined, 300);
+  // Indicators/regime need engine timeframes; longer chart timeframes show the 1h analysis.
+  const analysisTf = ENGINE_TFS.has(tf) ? tf : '1h';
+  const analysis = useApi<MarketAnalysisResp>(`/market-data/analysis?symbol=${encodeURIComponent(active)}&timeframe=${analysisTf}`, [active, analysisTf]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
   // ---- real-time updates (no polling) ----
-  useSocketEvent<{ symbol: string; last: number; bid: number; ask: number; change24hPct?: number }>('price', (p) => {
+  useSocketEvent<{ symbol: string; last: number; bid: number; ask: number; change24hPct?: number; timestamp?: number }>('price', (p) => {
+    if (p.symbol === active && p.last) setTick({ symbol: p.symbol, last: p.last, timestamp: p.timestamp ?? Date.now() });
     markets.setData((d) => (d ? { markets: d.markets.map((m) => (m.symbol === p.symbol ? { ...m, price: p.last ?? m.price, bid: p.bid, ask: p.ask, spreadPct: (p.ask - p.bid) / ((p.ask + p.bid) / 2), change24hPct: p.change24hPct ?? m.change24hPct, dataAgeMs: 0 } : m)) } : d));
   });
   useSocketEvent<Portfolio>('portfolio', (p) => {
@@ -51,9 +58,6 @@ export function DashboardPage() {
   useSocketEvent<AIAnalysis>('ai-analysis', (a) => analyses.setData((d) => ({ analyses: [a, ...(d?.analyses ?? [])].slice(0, 5) })));
   useSocketEvent<Signal>('signal', () => void signals.reload());
   useSocketEvent('risk', () => void risk.reload());
-  useSocketEvent<Candle & { symbol: string; timeframe: string }>('candle', (c) => {
-    if (c.symbol === active && c.timeframe === tf) candles.setData((d) => ({ candles: [...(d?.candles ?? []).filter((x) => x.timestamp !== c.timestamp), c].slice(-300) }));
-  });
 
   const p = portfolio.data?.portfolio;
   const r = risk.data;
@@ -131,15 +135,15 @@ export function DashboardPage() {
           className="xl:col-span-2"
           actions={
             <div className="flex gap-1">
-              {['5m', '15m', '1h', '4h'].map((t) => (
-                <button key={t} className={`rounded px-2 py-0.5 text-xs ${t === tf ? 'bg-sky-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`} onClick={() => setTf(t)}>
-                  {t}
+              {CHART_TFS.filter((t) => t.tf !== '1m').map((t) => (
+                <button key={t.tf} aria-pressed={t.tf === tf} className={`rounded px-2 py-0.5 text-xs ${t.tf === tf ? 'bg-sky-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`} onClick={() => setTf(t.tf)}>
+                  {t.label}
                 </button>
               ))}
             </div>
           }
         >
-          {candles.data?.candles.length ? <CandleChart candles={candles.data.candles} /> : <Empty>No candles for this timeframe yet</Empty>}
+          {chart.candles.length ? <CandleChart candles={chart.candles} live={chart.live} /> : <Empty>{chart.loading ? 'Loading…' : 'No candles for this timeframe yet'}</Empty>}
         </Card>
       </div>
 
