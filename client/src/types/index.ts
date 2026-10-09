@@ -119,6 +119,13 @@ export interface MarketSummary {
   quote?: string;
   pricePrecision?: number;
   marketOpen?: boolean;
+  /** Forex & metals: units per standard lot and pip size (price terms). */
+  contractSize?: number;
+  pipSize?: number;
+  /** USD per 1 unit of the quote currency (1 for USD/USDT quotes). */
+  quoteUsd?: number | null;
+  /** Commission per side as a fraction of notional. */
+  feeRate?: number;
 }
 
 export interface Portfolio {
@@ -148,6 +155,9 @@ export interface Position {
   direction: 'LONG' | 'SHORT';
   status: 'OPEN' | 'CLOSED';
   amount: number;
+  /** Forex/metals positions opened in lots. */
+  lots?: number;
+  contractSize?: number;
   entryPrice: number;
   currentPrice?: number;
   stopLoss?: number;
@@ -170,6 +180,7 @@ export interface Trade {
   strategyKey?: string;
   timeframe?: string;
   amount: number;
+  lots?: number;
   entryPrice: number;
   exitPrice: number;
   grossPnl: number;

@@ -104,6 +104,63 @@ describe('forex trading on trader accounts', () => {
     expect(acc2.totalPnl).toBeCloseTo(expectedUsd, 6);
   });
 
+  it('lot sizing: units = lots x contract size; P&L, pip value and commission are real USD values', async () => {
+    const t = await makeUser(app, 't@x.io', 'trader');
+    quote('EUR/USD', 1.0849, 1.0851);
+    const fee = orderExecutionService.paperBroker.cfg.feeRate;
+    orderExecutionService.paperBroker.cfg.feeRate = 0.001; // forex is capped at FOREX_FEE_RATE (0.003%)
+    try {
+      const o = await request(app).post('/api/account/orders').set(t.auth).send({ symbol: 'EUR/USD', direction: 'LONG', lots: 0.05, stopLossPct: 0.002 });
+      expect(o.status).toBe(201);
+      expect(o.body.position).toMatchObject({ amount: 5000, lots: 0.05, contractSize: 100_000, entryPrice: 1.0851 });
+      const entryFee = 1.0851 * 5000 * 0.00003; // ≈ $0.16 (≈ $3.26 per standard lot)
+      expect(o.body.position.fees).toBeCloseTo(entryFee, 8);
+      const acc1 = (await request(app).get('/api/account').set(t.auth)).body.account;
+      expect(acc1.balance).toBeCloseTo(10_000 - 5000 * 1.0851 - entryFee, 6); // fully funded: notional is debited
+      // +20 pips on 0.05 lots at $0.50/pip = +$10.00 gross.
+      quote('EUR/USD', 1.0871, 1.0873);
+      const c = await request(app).post(`/api/account/positions/${o.body.position._id}/close`).set(t.auth);
+      expect(c.body.trade).toMatchObject({ lots: 0.05 });
+      expect(c.body.trade.grossPnl).toBeCloseTo(10, 6);
+      const exitFee = 1.0871 * 5000 * 0.00003;
+      expect(c.body.trade.netPnl).toBeCloseTo(10 - entryFee - exitFee, 6);
+    } finally {
+      orderExecutionService.paperBroker.cfg.feeRate = fee;
+    }
+  });
+
+  it('lot sizing on JPY pairs and gold uses the right contract and converts P&L to USD', async () => {
+    const t = await makeUser(app, 't@x.io', 'trader');
+    quote('USD/JPY', 149.99, 150.01);
+    const o = await request(app).post('/api/account/orders').set(t.auth).send({ symbol: 'USD/JPY', direction: 'LONG', lots: 0.01, stopLossPct: 0.002 });
+    expect(o.body.position).toMatchObject({ amount: 1000, lots: 0.01 });
+    quote('USD/JPY', 150.11, 150.13); // +10 pips (0.01 each) on 1,000 USD = 100 JPY
+    const c = await request(app).post(`/api/account/positions/${o.body.position._id}/close`).set(t.auth);
+    expect(c.body.trade.netPnl).toBeCloseTo(100 / 150.12, 6);
+    quote('XAU/USD', 2355.0, 2355.4);
+    const g = await request(app).post('/api/account/orders').set(t.auth).send({ symbol: 'XAU/USD', direction: 'SHORT', lots: 0.02, stopLossPct: 0.005 });
+    expect(g.body.position).toMatchObject({ amount: 2, lots: 0.02, contractSize: 100 }); // 2 oz
+    const m = (await request(app).get('/api/market-data/summary').set(t.auth)).body.markets;
+    expect(m.find((x: { symbol: string }) => x.symbol === 'EUR/USD')).toMatchObject({ contractSize: 100_000, pipSize: 0.0001, feeRate: 0.00003 });
+    expect(m.find((x: { symbol: string }) => x.symbol === 'USD/JPY')).toMatchObject({ pipSize: 0.01 });
+    expect(m.find((x: { symbol: string }) => x.symbol === 'XAU/USD')).toMatchObject({ contractSize: 100, pipSize: 0.1 });
+  });
+
+  it('lot orders are validated: 0.01 steps, one size field, enough funds, forex/metals only', async () => {
+    const t = await makeUser(app, 't@x.io', 'trader');
+    quote('EUR/USD', 1.0849, 1.0851);
+    const send = (b: Record<string, unknown>) => request(app).post('/api/account/orders').set(t.auth).send({ symbol: 'EUR/USD', direction: 'LONG', stopLossPct: 0.002, ...b });
+    expect((await send({ lots: 0.015 })).status).toBe(400);
+    expect((await send({ lots: 0.01, investment: 100 })).status).toBe(400);
+    expect((await send({})).status).toBe(400);
+    const big = await send({ lots: 1 }); // 1 lot = 100,000 EUR ≈ $108,510, more than the $10,000 demo balance
+    expect(big.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect(big.body.error.message).toMatch(/needs \$108510/);
+    marketDataCache.setTicker('binance', { symbol: 'BTC/USDT', timestamp: Date.now(), last: 60000, bid: 59999, ask: 60001 });
+    marketDataCache.setOrderBook('binance', { symbol: 'BTC/USDT', timestamp: Date.now(), bids: [{ price: 59999, amount: 10 }], asks: [{ price: 60001, amount: 10 }] });
+    expect((await request(app).post('/api/account/orders').set(t.auth).send({ symbol: 'BTC/USDT', direction: 'LONG', lots: 0.01, stopLossPct: 0.02 })).body.error.code).toBe('LOTS_UNSUPPORTED');
+  });
+
   it('refuses closed markets, missing conversion rates and unknown symbols', async () => {
     const t = await makeUser(app, 't@x.io', 'trader');
     quote('EUR/GBP', 0.8539, 0.8541);

@@ -35,6 +35,8 @@ export interface OpenParams {
   quoteRate?: number;
   /** Exposure in USD (REAL accounts; external brokers size from it). */
   investmentUsd?: number;
+  /** Forex/metals units per standard lot; lots are derived from the FILLED amount. */
+  contractSize?: number;
 }
 
 /**
@@ -75,6 +77,7 @@ export class PositionManager {
       symbol: p.symbol,
       direction: p.direction,
       amount: order.filled,
+      ...(p.contractSize ? { contractSize: p.contractSize, lots: Math.round((order.filled / p.contractSize) * 100) / 100 } : {}),
       entryPrice: order.averagePrice,
       currentPrice: order.averagePrice,
       stopLoss: p.stopLoss,
@@ -178,6 +181,7 @@ export class PositionManager {
       strategyKey: position.strategyKey,
       timeframe: position.timeframe,
       amount,
+      ...(position.contractSize ? { contractSize: position.contractSize, lots: Math.round((amount / position.contractSize) * 100) / 100 } : {}),
       entryPrice: position.entryPrice,
       exitPrice,
       grossPnl: gross,
@@ -203,6 +207,7 @@ export class PositionManager {
     const remaining = position.amount - amount;
     if (remaining > 1e-12) {
       position.amount = remaining;
+      if (position.contractSize) position.lots = Math.round((remaining / position.contractSize) * 100) / 100;
       position.fees = (position.fees ?? 0) - entryFeeShare;
       position.realizedPnl = (position.realizedPnl ?? 0) + net;
     } else {

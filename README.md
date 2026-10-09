@@ -158,6 +158,8 @@ MARKET DATA" badge is shown whenever that feed is on.
 | Order ticket with server-side risk preview | Emergency close confirmation |
 | ![1 week](docs/screenshots/51-terminal-1w.png) | ![1 month](docs/screenshots/52-terminal-1m.png) |
 | Weekly candles (simulated data) | Monthly candles (simulated data) |
+| ![Lots ticket](docs/screenshots/53-ticket-lots-eurusd.png) | ![Lot position](docs/screenshots/54-position-lots.png) |
+| Forex ticket in lots: pip value, funds, loss at stop / profit at target | 0.05-lot EUR/USD position |
 
 ## Accounts & sign-in
 
@@ -212,6 +214,14 @@ every update of the forming candle is streamed (Binance `aggTrade` + kline strea
 1h, **4h, 1 day, 1 week and 1 month**. The long ones are calendar-aligned in UTC (weeks start Monday, months on
 the 1st). They come from the venue's own candles (Binance, OANDA H4/D/W/M) or from stored hourly candles, and the
 forming candle still moves on every tick.
+
+**Lot sizing (forex & metals).** The ticket trades in standard lots, like MT4/MT5: 1.00 lot is 100,000 units of
+the base currency (gold 100 oz, silver 5,000 oz), sizes go in 0.01 (micro lot) steps, and stops and targets are set
+in pips. It shows the pip value, the funds required, the loss at the stop and the profit at the target, all in USD at
+live prices and including the spread and commission. Positions are **fully funded (no leverage)**, so a lot needs its
+full value: 0.01 EUR/USD ≈ $1,085. Commission is `FOREX_FEE_RATE` per side (default 0.003% ≈ $3.40 per standard
+lot) on top of the bid/ask spread. Crypto keeps sizing by USD amount, and the amount mode is still available for
+forex too.
 
 ## Documentation
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronDown, Clock, Minus, Plus, Search, X } from 'lucide-react';
 import { CandleChart, type PriceMarker } from '../../charts/CandleChart';
@@ -117,6 +117,15 @@ function Stepper({ label, value, onChange, step, min, max, format, hint }: { lab
   );
 }
 
+type Sizing = 'lots' | 'usd';
+const LOT_PRESETS = [0.01, 0.05, 0.1, 0.5];
+
+/**
+ * Order ticket. Forex & metals trade in standard lots (1.00 lot = 100,000 units of the base
+ * currency; gold 100 oz) with stops in pips, like MT4/MT5; crypto trades by USD amount. Every
+ * figure is in USD at live prices: pip value, the funds the position needs (positions are fully
+ * funded, 1:1), spread, commission, and the P&L at the stop and at the target.
+ */
 function OrderTicket({ symbol }: { symbol: string }) {
   const { account, accountType, prices, markets, reloadAccount, reloadPositions, openDeposit } = useTrader();
   const { features } = useFeatures();
@@ -125,30 +134,56 @@ function OrderTicket({ symbol }: { symbol: string }) {
   const isReal = accountType === 'REAL';
   const market = markets.find((m) => m.symbol === symbol);
   const dp = pricePrecision(markets, symbol);
+  const lotCapable = !!market?.contractSize && !!market?.pipSize;
+  const [sizingPref, setSizing] = useState<Sizing>('lots');
+  const sizing: Sizing = lotCapable ? sizingPref : 'usd';
   const [investment, setInvestment] = useState(100);
+  const [lots, setLots] = useState(0.01);
   const [sl, setSl] = useState(0.02);
   const [tpOn, setTpOn] = useState(true);
   const [tp, setTp] = useState(0.04);
+  const [slPips, setSlPips] = useState(20);
+  const [tpPips, setTpPips] = useState(40);
   const [busy, setBusy] = useState<'LONG' | 'SHORT' | null>(null);
-  const price = prices[symbol]?.last ?? markets.find((m) => m.symbol === symbol)?.price;
-  const fees = investment * 0.001 * 2;
+  const tick = prices[symbol];
+  const price = tick?.last ?? market?.price;
+  const bid = tick?.bid ?? market?.bid;
+  const ask = tick?.ask ?? market?.ask;
+  const quoteUsd = market?.quoteUsd ?? (market?.quote === 'USD' || market?.quote === 'USDT' ? 1 : null);
+  const feeRate = market?.feeRate ?? 0.001;
+
+  // Everything below is in USD.
+  const pipSize = market?.pipSize ?? 0;
+  const units = sizing === 'lots' ? lots * (market?.contractSize ?? 0) : price && quoteUsd ? investment / quoteUsd / price : 0;
+  const notional = price && quoteUsd ? units * price * quoteUsd : sizing === 'usd' ? investment : 0;
+  const slPct = sizing === 'lots' && price ? (slPips * pipSize) / price : sl;
+  const tpPct = sizing === 'lots' && price ? (tpPips * pipSize) / price : tp;
+  const pipValue = quoteUsd && pipSize ? units * pipSize * quoteUsd : null;
+  const spreadCost = bid && ask && quoteUsd ? units * (ask - bid) * quoteUsd : 0;
+  const fees = notional * feeRate * 2;
+  const lossAtStop = notional * slPct + fees + spreadCost;
+  const profitAtTarget = notional * tpPct - fees - spreadCost;
+  const needed = notional;
+
   const blocked = !user?.emailVerified
     ? 'Verify your email to trade'
     : isReal && !features.realTrading
       ? 'Real-account trading is not open yet'
       : market?.marketOpen === false
         ? 'Market closed — forex trades Sunday 21:00 to Friday 21:00 UTC'
-        : !price
+        : !price || !quoteUsd
           ? 'Waiting for market data'
-          : investment > (account?.available ?? 0)
-            ? `Insufficient ${isReal ? '' : 'demo '}balance`
+          : needed > (account?.available ?? 0)
+            ? `Insufficient ${isReal ? '' : 'demo '}balance: this trade needs $${fmtNum(needed)}`
             : null;
 
   const place = async (direction: 'LONG' | 'SHORT') => {
     setBusy(direction);
     try {
-      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { account: accountType, symbol, direction, investment, stopLossPct: sl, takeProfitPct: tpOn ? tp : undefined, idempotencyKey: crypto.randomUUID() } });
-      toast('success', `${direction === 'LONG' ? 'Buy' : 'Sell'} ${symbol} filled`, `${fmtNum(r.position.amount, market?.category === 'crypto' ? 6 : 2)} @ ${fmtPriceDp(r.position.entryPrice, dp)}${isReal ? ' · Real account' : ''}`);
+      const size = sizing === 'lots' ? { lots } : { investment };
+      const r = await api<{ position: Position }>('/account/orders', { method: 'POST', body: { account: accountType, symbol, direction, ...size, stopLossPct: slPct, takeProfitPct: tpOn ? tpPct : undefined, idempotencyKey: crypto.randomUUID() } });
+      const what = r.position.lots ? `${fmtNum(r.position.lots, 2)} lot${r.position.lots === 1 ? '' : 's'}` : fmtNum(r.position.amount, market?.category === 'crypto' ? 6 : 2);
+      toast('success', `${direction === 'LONG' ? 'Buy' : 'Sell'} ${symbol} filled`, `${what} @ ${fmtPriceDp(r.position.entryPrice, dp)}${isReal ? ' · Real account' : ''}`);
       await Promise.all([reloadPositions(), reloadAccount()]);
     } catch (e) {
       toast('error', 'Order rejected', (e as Error).message);
@@ -156,6 +191,13 @@ function OrderTicket({ symbol }: { symbol: string }) {
       setBusy(null);
     }
   };
+
+  const row = (label: string, value: ReactNode, cls = 'text-slate-200') => (
+    <div className="flex justify-between">
+      <span className="text-slate-400">{label}</span>
+      <span className={`font-mono ${cls}`}>{value}</span>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
@@ -165,29 +207,61 @@ function OrderTicket({ symbol }: { symbol: string }) {
         </span>
         <span className="font-mono text-sm text-slate-300">{fmtPriceDp(price, dp)}</span>
       </div>
-      <Stepper label="Investment" value={investment} onChange={setInvestment} step={10} min={10} max={100_000} format={(v) => `$${fmtNum(v, 0)}`} />
-      <div className="grid grid-cols-4 gap-1.5">
-        {[50, 100, 500, 1000].map((v) => (
-          <button key={v} className={`rounded-lg py-1 text-xs font-semibold ${investment === v ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} onClick={() => setInvestment(v)}>
-            ${v}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Stepper label="Stop loss %" value={sl} onChange={setSl} step={0.005} min={0.001} max={0.5} format={(v) => `${(v * 100).toFixed(1)}%`} />
-        <div className={tpOn ? '' : 'opacity-50'}>
-          <Stepper label="Take profit %" value={tp} onChange={setTp} step={0.005} min={0.001} max={2} format={(v) => `${(v * 100).toFixed(1)}%`} />
+      {lotCapable && (
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-900 p-1 text-xs" role="tablist" aria-label="Order size in">
+          {(['lots', 'usd'] as const).map((m) => (
+            <button key={m} role="tab" aria-selected={sizing === m} onClick={() => setSizing(m)} className={`rounded-md py-1.5 font-semibold ${sizing === m ? 'bg-slate-700 text-slate-50' : 'text-slate-400 hover:text-slate-200'}`}>
+              {m === 'lots' ? 'Lots' : 'Amount ($)'}
+            </button>
+          ))}
         </div>
-      </div>
+      )}
+      {sizing === 'lots' ? (
+        <>
+          <Stepper label="Volume (lots)" value={lots} onChange={(v) => setLots(Math.max(0.01, Math.round(v * 100) / 100))} step={0.01} min={0.01} max={100} format={(v) => v.toFixed(2)} hint={`${fmtNum(units, 0)} ${market?.base ?? ''}${market?.category === 'metals' ? ' oz' : ''}`} />
+          <div className="grid grid-cols-4 gap-1.5">
+            {LOT_PRESETS.map((v) => (
+              <button key={v} className={`rounded-lg py-1 text-xs font-semibold ${lots === v ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} onClick={() => setLots(v)}>
+                {v.toFixed(2)}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Stepper label="Stop loss (pips)" value={slPips} onChange={(v) => setSlPips(Math.round(v))} step={5} min={1} max={5000} format={(v) => fmtNum(v, 0)} hint={pipValue ? `-$${fmtNum(slPips * pipValue)}` : undefined} />
+            <div className={tpOn ? '' : 'opacity-50'}>
+              <Stepper label="Take profit (pips)" value={tpPips} onChange={(v) => setTpPips(Math.round(v))} step={5} min={1} max={10000} format={(v) => fmtNum(v, 0)} hint={pipValue ? `+$${fmtNum(tpPips * pipValue)}` : undefined} />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <Stepper label="Investment" value={investment} onChange={setInvestment} step={10} min={10} max={100_000} format={(v) => `$${fmtNum(v, 0)}`} />
+          <div className="grid grid-cols-4 gap-1.5">
+            {[50, 100, 500, 1000].map((v) => (
+              <button key={v} className={`rounded-lg py-1 text-xs font-semibold ${investment === v ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`} onClick={() => setInvestment(v)}>
+                ${v}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Stepper label="Stop loss %" value={sl} onChange={setSl} step={0.005} min={0.001} max={0.5} format={(v) => `${(v * 100).toFixed(1)}%`} />
+            <div className={tpOn ? '' : 'opacity-50'}>
+              <Stepper label="Take profit %" value={tp} onChange={setTp} step={0.005} min={0.001} max={2} format={(v) => `${(v * 100).toFixed(1)}%`} />
+            </div>
+          </div>
+        </>
+      )}
       <label className="flex items-center justify-between text-xs text-slate-400">
         Take profit
         <input type="checkbox" checked={tpOn} onChange={(e) => setTpOn(e.target.checked)} className="h-4 w-4 accent-sky-500" />
       </label>
       <div className="space-y-1 rounded-lg bg-slate-900 p-2.5 text-xs">
-        <div className="flex justify-between"><span className="text-slate-400">Units</span><span className="font-mono text-slate-200">{price ? fmtNum(investment / price, market?.category === 'crypto' ? 6 : 2) : '—'}</span></div>
-        <div className="flex justify-between"><span className="text-slate-400">Max loss at stop ≈</span><span className="font-mono text-red-400">-${fmtNum(investment * sl + fees)}</span></div>
-        {tpOn && <div className="flex justify-between"><span className="text-slate-400">Profit at target ≈</span><span className="font-mono text-emerald-400">+${fmtNum(investment * tp - fees)}</span></div>}
-        <div className="flex justify-between"><span className="text-slate-400">Est. fees</span><span className="font-mono text-slate-300">${fmtNum(fees)}</span></div>
+        {sizing === 'lots' ? row('Units', `${fmtNum(units, 0)}${market?.category === 'metals' ? ' oz' : ` ${market?.base ?? ''}`}`) : row('Units', price ? fmtNum(units, market?.category === 'crypto' ? 6 : 2) : '—')}
+        {pipValue !== null && row('Pip value', `$${fmtNum(pipValue, pipValue < 1 ? 4 : 2)}`)}
+        {row('Funds required (1:1)', `$${fmtNum(needed)}`)}
+        {row('Max loss at stop ≈', `-$${fmtNum(lossAtStop)}`, 'text-red-400')}
+        {tpOn && row('Profit at target ≈', `${profitAtTarget >= 0 ? '+' : '-'}$${fmtNum(Math.abs(profitAtTarget))}`, profitAtTarget >= 0 ? 'text-emerald-400' : 'text-red-400')}
+        {row('Spread + fees', `$${fmtNum(spreadCost + fees)}`, 'text-slate-300')}
       </div>
       <button className="flex h-14 w-full items-center justify-between rounded-xl bg-emerald-500 px-5 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:bg-emerald-400 disabled:opacity-50" disabled={!!blocked || !!busy} onClick={() => place('LONG')}>
         {busy === 'LONG' ? 'Placing…' : 'Buy'} <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25"><ArrowUp size={16} /></span>
@@ -196,12 +270,15 @@ function OrderTicket({ symbol }: { symbol: string }) {
         {busy === 'SHORT' ? 'Placing…' : 'Sell'} <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25"><ArrowDown size={16} /></span>
       </button>
       {blocked && <div className="text-center text-xs text-amber-400">{blocked}</div>}
-      {isReal && features.deposits && (account?.available ?? 0) < investment && (
+      {isReal && features.deposits && (account?.available ?? 0) < needed && (
         <button className="w-full rounded-lg bg-emerald-500/15 py-2 text-sm font-bold text-emerald-400 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25" onClick={openDeposit}>
           + Deposit with M-Pesa
         </button>
       )}
-      <p className="text-center text-[10px] leading-snug text-slate-500">{isReal ? 'Real account · real money. Fills at the live market price incl. fees and spread. Trading involves risk of loss.' : 'Demo account · virtual funds. Simulated fills include fees, spread and slippage.'}</p>
+      <p className="text-center text-[10px] leading-snug text-slate-500">
+        {sizing === 'lots' ? 'Positions are fully funded (no leverage): 1 lot needs its full value. ' : ''}
+        {isReal ? 'Real account · real money. Fills at the live bid/ask incl. commission. Trading involves risk of loss.' : 'Demo account · virtual funds. Simulated fills include spread, commission and slippage.'}
+      </p>
     </div>
   );
 }
@@ -251,7 +328,7 @@ function TradesPanel() {
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-slate-400">
                     <span>Entry <b className="font-mono text-slate-200">{fmtPriceDp(p.entryPrice, pricePrecision(markets, p.symbol))}</b></span>
-                    <span className="text-right">Size <b className="font-mono text-slate-200">${fmtNum(p.entryPrice * p.amount * (p.quoteRate ?? 1), 0)}</b></span>
+                    <span className="text-right">{p.lots ? <>Lots <b className="font-mono text-slate-200">{fmtNum(p.lots, 2)}</b></> : <>Size <b className="font-mono text-slate-200">${fmtNum(p.entryPrice * p.amount * (p.quoteRate ?? 1), 0)}</b></>}</span>
                     <span>SL <b className="font-mono text-red-400">{fmtPriceDp(p.stopLoss, pricePrecision(markets, p.symbol))}</b></span>
                     <span className="text-right">TP <b className="font-mono text-emerald-400">{fmtPriceDp(p.takeProfit, pricePrecision(markets, p.symbol))}</b></span>
                   </div>

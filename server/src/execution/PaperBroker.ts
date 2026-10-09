@@ -1,5 +1,7 @@
 import type { OrderBook, OrderRequest, OrderStatus, Ticker } from '../types';
 import { sleep } from '../utils/math';
+import { env } from '../config/env';
+import { FOREX_VENUE } from '../marketData/instruments';
 
 export interface PaperConfig {
   feeRate: number;
@@ -49,6 +51,8 @@ export class PaperBroker {
   ) {}
 
   async execute(req: OrderRequest, exchange = 'binance'): Promise<PaperExecution> {
+    // Forex/metals are charged a broker-like commission (the spread is paid by filling at bid/ask).
+    const feeRate = exchange === FOREX_VENUE ? Math.min(this.cfg.feeRate, env.FOREX_FEE_RATE) : this.cfg.feeRate;
     const latency = Math.round(this.cfg.latencyMs * (1 + (this.random() - 0.5) * 2 * this.cfg.latencyJitter));
     if (latency > 0) await sleep(latency);
     const reject = (reason: string): PaperExecution => ({ status: 'REJECTED', fills: [], filled: 0, fee: 0, rejectReason: reason, latencyMs: latency, simulated: true });
@@ -84,7 +88,7 @@ export class PaperBroker {
       if (take <= 0) continue;
       const adj = req.side === 'buy' ? lvl.price * (1 + this.cfg.slippagePct) : lvl.price * (1 - this.cfg.slippagePct);
       const price = limit !== undefined ? (req.side === 'buy' ? Math.min(adj, limit) : Math.max(adj, limit)) : adj;
-      fills.push({ price, amount: take, fee: price * take * this.cfg.feeRate, slippage: Math.abs(price - mid) * take });
+      fills.push({ price, amount: take, fee: price * take * feeRate, slippage: Math.abs(price - mid) * take });
       remaining -= take;
     }
 

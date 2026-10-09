@@ -138,6 +138,8 @@ const schema = z.object({
 
   PAPER_STARTING_BALANCE: num(10000),
   PAPER_FEE_RATE: num(0.001),
+  /** Forex & metals commission per side as a fraction of notional (0.00003 ≈ $3.40 per EUR/USD standard lot). The bid/ask spread is charged separately by filling at bid/ask. */
+  FOREX_FEE_RATE: num(0.00003),
   PAPER_SLIPPAGE_PCT: num(0.0005),
   PAPER_LATENCY_MS: num(150),
   PAPER_REJECT_RATE: num(0.01),

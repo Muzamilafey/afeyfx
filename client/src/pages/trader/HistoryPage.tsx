@@ -42,7 +42,7 @@ export function HistoryPage() {
                     <td>{fmtTime(t.closedAt)}</td>
                     <td>{fmtPriceDp(t.entryPrice, pricePrecision(markets, t.symbol))}</td>
                     <td>{fmtPriceDp(t.exitPrice, pricePrecision(markets, t.symbol))}</td>
-                    <td>${fmtNum(t.entryPrice * t.amount * (t.quoteRate ?? 1), 0)}</td>
+                    <td>${fmtNum(t.entryPrice * t.amount * (t.quoteRate ?? 1), 0)}{t.lots ? <span className="text-slate-500"> · {fmtNum(t.lots, 2)} lot</span> : null}</td>
                     <td>{fmtNum(t.fees)}</td>
                     <td className={pnlClass(t.netPnl)}>{fmtSigned(t.netPnl)}</td>
                     <td className={pnlClass(t.returnPct)}>{fmtPct(t.returnPct)}</td>

@@ -13,7 +13,7 @@ import { audit } from '../services/AuditService';
 import { AppError } from '../utils/errors';
 import { floorTo } from '../utils/math';
 import { paymentService } from '../payments/PaymentService';
-import { FOREX_VENUE, instrumentOf } from '../marketData/instruments';
+import { FOREX_VENUE, LOT_STEP, MAX_LOTS, instrumentOf } from '../marketData/instruments';
 import { forexDataService } from '../marketData/ForexDataService';
 import { quoteOf, usdPer } from '../portfolio/fx';
 
@@ -29,12 +29,15 @@ export const accountSchemas = {
   order: z.object({
     symbol: z.string().regex(/^[A-Z0-9]{2,15}\/[A-Z0-9]{2,15}$/),
     direction: z.enum(['LONG', 'SHORT']),
-    investment: z.number().min(10).max(100_000),
-    stopLossPct: z.number().min(0.001).max(0.5).default(0.02),
-    takeProfitPct: z.number().min(0.001).max(2).optional(),
+    /** Size in USD (any market) ... */
+    investment: z.number().min(10).max(100_000).optional(),
+    /** ... or in standard lots (forex & metals): 0.01 = micro lot. Exactly one of the two. */
+    lots: z.number().min(LOT_STEP).max(MAX_LOTS).refine((v) => Math.abs(Math.round(v / LOT_STEP) * LOT_STEP - v) < 1e-9, 'Lots must be a multiple of 0.01').optional(),
+    stopLossPct: z.number().min(0.00005).max(0.5).default(0.02),
+    takeProfitPct: z.number().min(0.00005).max(2).optional(),
     idempotencyKey: z.string().min(8).max(100).optional(),
     account: z.enum(['DEMO', 'REAL']).default('DEMO'),
-  }),
+  }).refine((b) => (b.investment === undefined) !== (b.lots === undefined), { message: 'Give either an investment amount or a lot size', path: ['lots'] }),
 };
 
 const owner = (req: Request) => req.user!.id;
@@ -85,9 +88,19 @@ export const accountController = {
     // Fees are charged on top of the investment; REAL accounts also keep a small buffer for
     // book-walking slippage so cash can never go negative.
     const buffer = mode === 'REAL' ? env.PAPER_FEE_RATE + 0.005 : 0;
-    if (b.investment * (1 + buffer) > p.available + 1e-9) throw new AppError(400, `Insufficient ${mode === 'REAL' ? '' : 'demo '}balance (available ${p.available.toFixed(2)})`, 'INSUFFICIENT_BALANCE');
     const entry = b.direction === 'LONG' ? t.ask : t.bid;
-    const amount = floorTo(b.investment / quoteRate / entry, inst.amountPrecision);
+    let amount: number;
+    let investment: number;
+    if (b.lots !== undefined) {
+      // Lots: units = lots x contract size; the position is fully funded (1:1), so its USD notional is the cost.
+      if (!inst.contractSize) throw new AppError(400, 'Lot sizing is available for forex and metals only', 'LOTS_UNSUPPORTED');
+      amount = Math.round(b.lots * inst.contractSize * 100) / 100;
+      investment = amount * entry * quoteRate;
+    } else {
+      investment = b.investment!;
+      amount = floorTo(investment / quoteRate / entry, inst.amountPrecision);
+    }
+    if (investment * (1 + buffer) > p.available + 1e-9) throw new AppError(400, `Insufficient ${mode === 'REAL' ? '' : 'demo '}balance: this trade needs $${investment.toFixed(2)} (available $${p.available.toFixed(2)})`, 'INSUFFICIENT_BALANCE');
     if (!(amount > 0)) throw new AppError(400, 'Order size too small', 'TOO_SMALL');
     const sl = b.direction === 'LONG' ? entry * (1 - b.stopLossPct) : entry * (1 + b.stopLossPct);
     const tp = b.takeProfitPct ? (b.direction === 'LONG' ? entry * (1 + b.takeProfitPct) : entry * (1 - b.takeProfitPct)) : undefined;
@@ -103,7 +116,8 @@ export const accountController = {
       idempotencyKey: `${mode === 'REAL' ? 'real' : 'demo'}:${owner(req)}:${b.idempotencyKey ?? randomUUID()}`,
       user: owner(req),
       quoteRate,
-      investmentUsd: b.investment,
+      investmentUsd: investment,
+      contractSize: b.lots !== undefined ? inst.contractSize : undefined,
     });
     if (!r.position) throw new AppError(422, `Order not filled: ${r.order.rejectReason ?? r.order.status}`, 'ORDER_NOT_FILLED');
     res.status(201).json({ order: r.order, position: r.position });

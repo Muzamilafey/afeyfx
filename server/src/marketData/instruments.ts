@@ -21,6 +21,18 @@ export interface Instrument {
   amountPrecision: number;
   /** Venue instrument id (OANDA uses EUR_USD). */
   venueId: string;
+  /** Forex / metals: units per 1.00 standard lot (EUR/USD 100,000 EUR; XAU/USD 100 oz). */
+  contractSize?: number;
+  /** Forex / metals: size of one pip in price terms (0.0001; 0.01 for JPY pairs; metals per convention). */
+  pipSize?: number;
+}
+
+/** Standard lot specifications (as used by MT4/MT5 brokers). Lots step by 0.01 (a micro lot). */
+export const LOT_STEP = 0.01;
+export const MAX_LOTS = 100;
+const METAL_SPEC: Record<string, { contractSize: number; pipSize: number }> = { XAU: { contractSize: 100, pipSize: 0.1 }, XAG: { contractSize: 5000, pipSize: 0.01 }, XPT: { contractSize: 100, pipSize: 0.1 }, XPD: { contractSize: 100, pipSize: 0.1 } };
+function lotSpec(base: string, quote: string) {
+  return METAL_SPEC[base] ?? { contractSize: 100_000, pipSize: quote === 'JPY' ? 0.01 : 0.0001 };
 }
 
 const CURRENCY_NAMES: Record<string, string> = {
@@ -66,7 +78,7 @@ function build(): Instrument[] {
   if (forexAvailable()) {
     for (const symbol of [...FOREX_PAIRS, ...METAL_PAIRS]) {
       const [base, quote] = symbol.split('/');
-      out.push({ symbol, base, quote, category: METAL_PAIRS.includes(symbol as never) ? 'metals' : 'forex', venue: FOREX_VENUE, name: `${CURRENCY_NAMES[base] ?? base} / ${CURRENCY_NAMES[quote] ?? quote}`, pricePrecision: fxPrecision(base, quote), amountPrecision: 2, venueId: `${base}_${quote}` });
+      out.push({ symbol, base, quote, category: METAL_PAIRS.includes(symbol as never) ? 'metals' : 'forex', venue: FOREX_VENUE, name: `${CURRENCY_NAMES[base] ?? base} / ${CURRENCY_NAMES[quote] ?? quote}`, pricePrecision: fxPrecision(base, quote), amountPrecision: 2, venueId: `${base}_${quote}`, ...lotSpec(base, quote) });
     }
   }
   return out;

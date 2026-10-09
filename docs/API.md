@@ -26,7 +26,7 @@ Errors look like `{ "error": { "code": "...", "message": "...", "details"?: ... 
 | POST | `/password` `{currentPassword?,newPassword}` | Set (social-only accounts) or change the password |
 
 ## Personal demo account `/api/account` (any signed-in user; trading requires a verified email)
-`GET /` (account + user) · `POST /orders` `{symbol,direction:'LONG'|'SHORT',investment,stopLossPct,takeProfitPct?,idempotencyKey?}` ·
+`GET /` (account + user) · `POST /orders` `{symbol,direction:'LONG'|'SHORT',investment | lots,stopLossPct,takeProfitPct?,idempotencyKey?}` (`lots`: forex/metals, 0.01 steps; units = lots × contract size) ·
 `GET /positions?status=OPEN|CLOSED` · `POST /positions/:id/close` · `GET /history` · `GET /performance` · `POST /demo/reset` (only when flat)
 
 Account endpoints take `?account=DEMO|REAL` (default DEMO); `GET /api/account` returns both accounts. Orders take

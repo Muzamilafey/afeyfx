@@ -1,3 +1,4 @@
+import { env } from '../config/env';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Market } from '../models/Market';
@@ -8,6 +9,7 @@ import { marketRegimeService } from '../services/analysis/MarketRegimeService';
 import { technicalAnalysis } from '../services/analysis/TechnicalAnalysisService';
 import { TIMEFRAMES, type Timeframe } from '../types';
 import { chartCandleService, isChartTimeframe } from '../marketData/ChartCandles';
+import { usdPer } from '../portfolio/fx';
 import { AppError } from '../utils/errors';
 import { audit } from '../services/AuditService';
 import { FOREX_VENUE, instruments, precisionFor, venueOf } from '../marketData/instruments';
@@ -47,7 +49,7 @@ export const marketDataController = {
     const markets = instruments().map((i) => {
       const s = md.summary(i.symbol, i.venue);
       const open = i.venue === FOREX_VENUE ? forexDataService.isTradeable(i.symbol) : true;
-      const meta = { category: i.category, name: i.name, base: i.base, quote: i.quote, pricePrecision: i.category === 'crypto' ? precisionFor(i.symbol, s?.price) : i.pricePrecision, marketOpen: open };
+      const meta = { category: i.category, name: i.name, base: i.base, quote: i.quote, pricePrecision: i.category === 'crypto' ? precisionFor(i.symbol, s?.price) : i.pricePrecision, marketOpen: open, contractSize: i.contractSize, pipSize: i.pipSize, quoteUsd: usdPer(i.quote), feeRate: i.venue === FOREX_VENUE ? Math.min(env.PAPER_FEE_RATE, env.FOREX_FEE_RATE) : env.PAPER_FEE_RATE };
       return s ? { ...s, ...meta } : { symbol: i.symbol, exchange: i.venue, unavailable: true, ...meta };
     });
     res.json({ simulated: md.simulated, exchange: md.exchange, running: md.isRunning, wsConnected: md.wsConnected, categories: [...new Set(markets.map((m) => m.category))], markets });

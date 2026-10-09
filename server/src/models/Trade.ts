@@ -14,6 +14,8 @@ const tradeSchema = new Schema(
     strategyKey: { type: String, index: true },
     timeframe: String,
     amount: Number,
+    lots: Number,
+    contractSize: Number,
     entryPrice: Number,
     exitPrice: Number,
     grossPnl: Number,

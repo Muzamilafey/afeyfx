@@ -9,6 +9,9 @@ const positionSchema = new Schema(
     direction: { type: String, enum: ['LONG', 'SHORT'], required: true },
     status: { type: String, enum: ['OPEN', 'CLOSED'], default: 'OPEN', index: true },
     amount: { type: Number, required: true },
+    /** Forex/metals: size in standard lots (amount = lots x contractSize). */
+    lots: Number,
+    contractSize: Number,
     entryPrice: { type: Number, required: true },
     currentPrice: Number,
     stopLoss: Number,
